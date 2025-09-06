@@ -39,6 +39,29 @@ class TrackingRepository {
 		});
 	}
 
+	Future<void> replaceDayEntries(DateTime date, Map<int, Map<int, int>> counts) async {
+		final db = await AppDatabase().database;
+		final d = date.toIso8601String().substring(0, 10);
+		await db.transaction((txn) async {
+			await txn.delete('daily_entries', where: 'date = ?', whereArgs: [d]);
+			for (final entry in counts.entries) {
+				final studentId = entry.key;
+				final habits = entry.value;
+				for (final h in habits.entries) {
+					final habitId = h.key;
+					final count = h.value;
+					if (count == 0) continue;
+					await txn.insert('daily_entries', {
+						'date': d,
+						'student_id': studentId,
+						'habit_id': habitId,
+						'count': count,
+					});
+				}
+			}
+		});
+	}
+
 	Future<List<DailyEntry>> getEntriesForDate(DateTime date) async {
 		final db = await AppDatabase().database;
 		final dateStr = date.toIso8601String().substring(0, 10);

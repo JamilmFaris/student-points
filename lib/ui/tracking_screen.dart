@@ -27,7 +27,10 @@ class TrackingScreen extends StatelessWidget {
 					floatingActionButton: Builder(
 						builder: (context) {
 							return FloatingActionButton.extended(
-								onPressed: () => context.read<TrackingCubit>().saveAll(),
+								onPressed: () async {
+									await context.read<TrackingCubit>().saveAll();
+									ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ التعديلات')));
+								},
 								label: const Text('حفظ'),
 								icon: const Icon(Icons.save),
 							);
@@ -44,6 +47,14 @@ class _TrackingTable extends StatelessWidget {
 
 	@override
 	Widget build(BuildContext context) {
+		WidgetsBinding.instance.addPostFrameCallback((_) {
+			final messenger = ScaffoldMessenger.of(context);
+			messenger.clearSnackBars();
+			messenger.showSnackBar(const SnackBar(
+				content: Text('لزيادة النقاط: كل ضغطة تزيد بعدد نقاط العادة (مرتين = 2×النقاط).'),
+				duration: Duration(seconds: 6),
+			));
+		});
 		return BlocBuilder<StudentsCubit, StudentsState>(builder: (context, sState) {
 			return BlocBuilder<HabitsCubit, HabitsState>(builder: (context, hState) {
 				return BlocBuilder<TrackingCubit, TrackingState>(builder: (context, tState) {
@@ -69,18 +80,28 @@ class _TrackingTable extends StatelessWidget {
 							DataCell(Text(student.name)),
 							DataCell(Text('$total')),
 							for (final h in habits)
-								DataCell(
-									ElevatedButton(
-										onPressed: () => context.read<TrackingCubit>().increment(student.id!, h.id!),
-										child: Text('${counts[h.id] ?? 0}'),
-									),
-								),
+								DataCell(Row(
+									children: [
+										IconButton(
+											icon: const Icon(Icons.remove),
+											onPressed: () => context.read<TrackingCubit>().decrement(student.id!, h.id!),
+										),
+										Text('${counts[h.id] ?? 0}'),
+										IconButton(
+											icon: const Icon(Icons.add),
+											onPressed: () => context.read<TrackingCubit>().increment(student.id!, h.id!),
+										),
+									],
+								)),
 						]);
 					}).toList();
 
 					return SingleChildScrollView(
-						scrollDirection: Axis.horizontal,
-						child: DataTable(columns: columns, rows: rows),
+						padding: const EdgeInsets.only(bottom: 80),
+						child: SingleChildScrollView(
+							scrollDirection: Axis.horizontal,
+							child: DataTable(columns: columns, rows: rows),
+						),
 					);
 				});
 			});
