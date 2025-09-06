@@ -8,6 +8,9 @@ class TrackingRepository {
 		final db = await AppDatabase().database;
 		final dateStr = date.toIso8601String().substring(0, 10);
 		await db.transaction((txn) async {
+			// Get current habit points once per increment
+			final habitRows = await txn.query('habits', columns: ['points'], where: 'id = ?', whereArgs: [habitId], limit: 1);
+			final habitPoints = (habitRows.first['points'] as int);
 			final existing = await txn.query('daily_entries',
 				where: 'date = ? AND student_id = ? AND habit_id = ?',
 				whereArgs: [dateStr, studentId, habitId], limit: 1);
@@ -17,10 +20,15 @@ class TrackingRepository {
 					'student_id': studentId,
 					'habit_id': habitId,
 					'count': 1,
+					'points_earned': habitPoints,
 				});
 			} else {
 				final count = (existing.first['count'] as int) + 1;
-				await txn.update('daily_entries', {'count': count},
+				final prevPoints = (existing.first['points_earned'] as int? ?? 0);
+				await txn.update('daily_entries', {
+					'count': count,
+					'points_earned': prevPoints + habitPoints,
+				},
 					where: 'id = ?', whereArgs: [existing.first['id']]);
 			}
 		});
@@ -30,9 +38,14 @@ class TrackingRepository {
 		final db = await AppDatabase().database;
 		await db.transaction((txn) async {
 			for (final e in entries) {
+				final habitRows = await txn.query('habits', columns: ['points'], where: 'id = ?', whereArgs: [e.habitId], limit: 1);
+				final habitPoints = (habitRows.first['points'] as int);
 				await txn.insert(
 					'daily_entries',
-					e.toMap(),
+					{
+						...e.toMap(),
+						'points_earned': e.count * habitPoints,
+					},
 					conflictAlgorithm: ConflictAlgorithm.replace,
 				);
 			}
@@ -44,6 +57,9 @@ class TrackingRepository {
 		final d = date.toIso8601String().substring(0, 10);
 		await db.transaction((txn) async {
 			await txn.delete('daily_entries', where: 'date = ?', whereArgs: [d]);
+			// Preload habit points into a map to avoid repeated queries
+			final habitRows = await txn.query('habits', columns: ['id', 'points']);
+			final habitIdToPoints = {for (final r in habitRows) r['id'] as int: r['points'] as int};
 			for (final entry in counts.entries) {
 				final studentId = entry.key;
 				final habits = entry.value;
@@ -51,11 +67,13 @@ class TrackingRepository {
 					final habitId = h.key;
 					final count = h.value;
 					if (count == 0) continue;
+					final points = (habitIdToPoints[habitId] ?? 0) * count;
 					await txn.insert('daily_entries', {
 						'date': d,
 						'student_id': studentId,
 						'habit_id': habitId,
 						'count': count,
+						'points_earned': points,
 					});
 				}
 			}
@@ -73,9 +91,8 @@ class TrackingRepository {
 		final db = await AppDatabase().database;
 		final dateStr = date.toIso8601String().substring(0, 10);
 		final rows = await db.rawQuery('''
-			SELECT de.student_id as student_id, SUM(de.count * h.points) AS totalPoints
+			SELECT de.student_id as student_id, SUM(de.points_earned) AS totalPoints
 			FROM daily_entries de
-			JOIN habits h ON h.id = de.habit_id
 			WHERE de.date = ?
 			GROUP BY de.student_id
 		''', [dateStr]);
@@ -86,9 +103,8 @@ class TrackingRepository {
 		final db = await AppDatabase().database;
 		final monthStr = month.toString().padLeft(2, '0');
 		final rows = await db.rawQuery('''
-			SELECT de.student_id as student_id, SUM(de.count * h.points) AS totalPoints
+			SELECT de.student_id as student_id, SUM(de.points_earned) AS totalPoints
 			FROM daily_entries de
-			JOIN habits h ON h.id = de.habit_id
 			WHERE substr(de.date,1,7) = ?
 			GROUP BY de.student_id
 		''', ['$year-$monthStr']);
@@ -98,9 +114,8 @@ class TrackingRepository {
 	Future<Map<int, int>> getYearlyTotals(int year) async {
 		final db = await AppDatabase().database;
 		final rows = await db.rawQuery('''
-			SELECT de.student_id as student_id, SUM(de.count * h.points) AS totalPoints
+			SELECT de.student_id as student_id, SUM(de.points_earned) AS totalPoints
 			FROM daily_entries de
-			JOIN habits h ON h.id = de.habit_id
 			WHERE substr(de.date,1,4) = ?
 			GROUP BY de.student_id
 		''', ['$year']);
@@ -112,9 +127,8 @@ class TrackingRepository {
 		final s = start.toIso8601String().substring(0, 10);
 		final e = end.toIso8601String().substring(0, 10);
 		final rows = await db.rawQuery('''
-			SELECT de.student_id as student_id, SUM(de.count * h.points) AS totalPoints
+			SELECT de.student_id as student_id, SUM(de.points_earned) AS totalPoints
 			FROM daily_entries de
-			JOIN habits h ON h.id = de.habit_id
 			WHERE de.date BETWEEN ? AND ?
 			GROUP BY de.student_id
 		''', [s, e]);
@@ -138,6 +152,21 @@ class TrackingRepository {
 			final count = r['count'] as int;
 			result.putIfAbsent(studentId, () => {});
 			result[studentId]![habitId] = count;
+		}
+		return result;
+	}
+
+	Future<Map<int, Map<int, int>>> getDayPointsBreakdown(DateTime date) async {
+		final db = await AppDatabase().database;
+		final d = date.toIso8601String().substring(0, 10);
+		final rows = await db.query('daily_entries', columns: ['student_id', 'habit_id', 'points_earned'], where: 'date = ?', whereArgs: [d]);
+		final result = <int, Map<int, int>>{};
+		for (final r in rows) {
+			final studentId = r['student_id'] as int;
+			final habitId = r['habit_id'] as int;
+			final points = r['points_earned'] as int? ?? 0;
+			result.putIfAbsent(studentId, () => {});
+			result[studentId]![habitId] = points;
 		}
 		return result;
 	}

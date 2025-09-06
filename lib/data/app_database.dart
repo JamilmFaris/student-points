@@ -21,7 +21,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 1,
+			version: 2,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -43,11 +43,24 @@ class AppDatabase {
 						student_id INTEGER NOT NULL,
 						habit_id INTEGER NOT NULL,
 						count INTEGER NOT NULL DEFAULT 0,
+						points_earned INTEGER NOT NULL DEFAULT 0,
 						UNIQUE(date, student_id, habit_id),
 						FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE,
 						FOREIGN KEY(habit_id) REFERENCES habits(id) ON DELETE CASCADE
 					);
 				''');
+			},
+			onUpgrade: (db, oldVersion, newVersion) async {
+				if (oldVersion < 2) {
+					await db.execute('ALTER TABLE daily_entries ADD COLUMN points_earned INTEGER');
+					await db.execute('''
+						UPDATE daily_entries
+						SET points_earned = (
+							SELECT points FROM habits WHERE habits.id = daily_entries.habit_id
+						) * count
+						WHERE points_earned IS NULL;
+					''');
+				}
 			},
 		);
 	}

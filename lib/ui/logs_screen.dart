@@ -193,6 +193,7 @@ class _DayBreakdownDialogState extends State<_DayBreakdownDialog> {
 	List<Student> _students = const [];
 	List<Habit> _habits = const [];
 	Map<int, Map<int, int>> _counts = const {};
+	Map<int, Map<int, int>> _points = const {};
 
 	@override
 	void initState() {
@@ -205,11 +206,13 @@ class _DayBreakdownDialogState extends State<_DayBreakdownDialog> {
 		final students = await _studentsRepo.getAll();
 		final habits = await _habitsRepo.getAll();
 		final counts = await _trackingRepo.getDayBreakdown(widget.date);
+		final points = await _trackingRepo.getDayPointsBreakdown(widget.date);
 		if (!mounted) return;
 		setState(() {
 			_students = students;
 			_habits = habits;
 			_counts = counts;
+			_points = points;
 			_loading = false;
 		});
 	}
@@ -236,7 +239,7 @@ class _DayBreakdownDialogState extends State<_DayBreakdownDialog> {
 										DataRow(cells: [
 											DataCell(Text(s.name)),
 											for (final h in _habits)
-												DataCell(Text(_formatPoints(_counts[s.id]?[h.id] ?? 0, h.points))),
+												DataCell(Text('${_points[s.id]?[h.id] ?? ((_counts[s.id]?[h.id] ?? 0) * h.points)}')),
 										]),
 								],
 							),
@@ -245,11 +248,6 @@ class _DayBreakdownDialogState extends State<_DayBreakdownDialog> {
 				actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
 			),
 		);
-	}
-
-	String _formatPoints(int count, int pointsPerHabit) {
-		final pts = count * pointsPerHabit;
-		return '$pts';
 	}
 }
 
