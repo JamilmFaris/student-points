@@ -27,7 +27,10 @@ class TrackingScreen extends StatelessWidget {
 					floatingActionButton: Builder(
 						builder: (context) {
 							return FloatingActionButton.extended(
-								onPressed: () => context.read<TrackingCubit>().saveAll(),
+								onPressed: () async {
+									await context.read<TrackingCubit>().saveAll();
+									ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ التعديلات')));
+								},
 								label: const Text('حفظ'),
 								icon: const Icon(Icons.save),
 							);
@@ -94,8 +97,11 @@ class _TrackingTable extends StatelessWidget {
 					}).toList();
 
 					return SingleChildScrollView(
-						scrollDirection: Axis.horizontal,
-						child: DataTable(columns: columns, rows: rows),
+						padding: const EdgeInsets.only(bottom: 80),
+						child: SingleChildScrollView(
+							scrollDirection: Axis.horizontal,
+							child: DataTable(columns: columns, rows: rows),
+						),
 					);
 				});
 			});
