@@ -66,7 +66,14 @@ class _TrackingTable extends StatelessWidget {
 					final columns = <DataColumn>[
 						const DataColumn(label: Text('الطالب')),
 						const DataColumn(label: Text('المجموع')),
-						for (final h in habits) DataColumn(label: Text(h.name)),
+						for (final h in habits) 
+            DataColumn(
+              label: SizedBox(
+                width: 100,
+                child: Align(
+                  alignment: Alignment.center,
+                  child:Text(h.name),
+						),)),
 					];
 
 					final rows = students.map((student) {
@@ -81,6 +88,7 @@ class _TrackingTable extends StatelessWidget {
 							DataCell(Text('$total')),
 							for (final h in habits)
 								DataCell(Row(
+									mainAxisSize: MainAxisSize.min,
 									children: [
 										IconButton(
 											icon: const Icon(Icons.remove),
@@ -100,7 +108,7 @@ class _TrackingTable extends StatelessWidget {
 						padding: const EdgeInsets.only(bottom: 80),
 						child: SingleChildScrollView(
 							scrollDirection: Axis.horizontal,
-							child: DataTable(columns: columns, rows: rows),
+							child: DataTable(columns: columns, rows: rows,),
 						),
 					);
 				});
