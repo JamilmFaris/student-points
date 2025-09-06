@@ -1,6 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../models/daily_entry.dart';
 import '../repositories/tracking_repository.dart';
 
 class TrackingState {
@@ -38,19 +37,31 @@ class TrackingCubit extends Cubit<TrackingState> {
 		}
 	}
 
-	Future<void> increment(int studentId, int habitId) async {
-		await _repo.incrementHabitCount(date: state.date, studentId: studentId, habitId: habitId);
-		await load(state.date);
+	void increment(int studentId, int habitId) {
+		final updated = _cloneCounts(state.countsByStudentHabit);
+		final studentMap = updated.putIfAbsent(studentId, () => {});
+		studentMap[habitId] = (studentMap[habitId] ?? 0) + 1;
+		emit(state.copyWith(countsByStudentHabit: updated));
+	}
+
+	void decrement(int studentId, int habitId) {
+		final updated = _cloneCounts(state.countsByStudentHabit);
+		final studentMap = updated.putIfAbsent(studentId, () => {});
+		studentMap[habitId] = (studentMap[habitId] ?? 0) - 1;
+		emit(state.copyWith(countsByStudentHabit: updated));
 	}
 
 	Future<void> saveAll() async {
-		final entries = <DailyEntry>[];
-		state.countsByStudentHabit.forEach((studentId, habits) {
-			habits.forEach((habitId, count) {
-				entries.add(DailyEntry(date: state.date, studentId: studentId, habitId: habitId, count: count));
-			});
+		// Replace the entire day's entries with the current state
+		await _repo.replaceDayEntries(state.date, state.countsByStudentHabit);
+	}
+
+	Map<int, Map<int, int>> _cloneCounts(Map<int, Map<int, int>> src) {
+		final copy = <int, Map<int, int>>{};
+		src.forEach((studentId, habits) {
+			copy[studentId] = Map<int, int>.from(habits);
 		});
-		await _repo.saveEntries(entries);
+		return copy;
 	}
 }
 

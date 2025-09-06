@@ -139,7 +139,13 @@ class _YearlyTabState extends State<_YearlyTab> {
 						if (range != null) {
 							final map = await context.read<LogsCubit>().loadRange(range.start, range.end);
 							if (!context.mounted) return;
-							showDialog(context: context, builder: (_) => _RangeDialog(map: map));
+							showDialog(
+								context: context,
+								builder: (_) => BlocProvider.value(
+									value: context.read<StudentsCubit>(),
+									child: _RangeDialog(map: map),
+								),
+							);
 						}
 					},
 					child: const Text('نطاق التواريخ'),
@@ -256,9 +262,11 @@ class _RangeDialog extends StatelessWidget {
 		return AlertDialog(
 			title: const Text('نطاق التواريخ'),
 			content: SizedBox(
+				width: double.maxFinite,
 				height: 300,
 				child: BlocBuilder<StudentsCubit, StudentsState>(builder: (_, s) {
 					return ListView(
+						shrinkWrap: true,
 						children: [
 							for (final entry in map.entries)
 								ListTile(

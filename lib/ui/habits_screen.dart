@@ -33,7 +33,14 @@ class HabitsScreen extends StatelessWidget {
 													onPressed: () async {
 														final result = await _promptHabit(context, name: h.name, points: h.points.toString());
 														if (result != null) {
-															context.read<HabitsCubit>().updateHabit(h.copyWith(name: result.$1, points: int.parse(result.$2)));
+															try {
+																await context.read<HabitsCubit>().updateHabit(
+																	h.copyWith(name: result.$1, points: int.parse(result.$2)),
+																);
+																ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث العادة')));
+															} catch (e) {
+																print(e); 
+															}
 														}
 													},
 												),
@@ -48,15 +55,24 @@ class HabitsScreen extends StatelessWidget {
 							);
 						},
 					),
-					floatingActionButton: FloatingActionButton.extended(
-						onPressed: () async {
-							final result = await _promptHabit(context);
-							if (result != null) {
-								context.read<HabitsCubit>().addHabit(result.$1, int.parse(result.$2));
-							}
+					floatingActionButton: Builder(
+						builder: (innerContext) {
+							return FloatingActionButton.extended(
+								onPressed: () async {
+									final result = await _promptHabit(innerContext);
+									if (result != null) {
+										try {
+											await innerContext.read<HabitsCubit>().addHabit(result.$1, int.parse(result.$2));
+											ScaffoldMessenger.of(innerContext).showSnackBar(const SnackBar(content: Text('تمت إضافة العادة')));
+										} catch (e) {
+											print(e); 
+										}
+									}
+								},
+								label: const Text('إضافة عادة'),
+								icon: const Icon(Icons.add),
+							);
 						},
-						label: const Text('إضافة عادة'),
-						icon: const Icon(Icons.add),
 					),
 				),
 			),
