@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [Locale('ar')],
+        supportedLocales: const [Locale('ar')],
       routes: {
         '/': (_) => const HomeScreen(),
         '/students': (_) => BlocProvider(

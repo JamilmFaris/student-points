@@ -115,6 +115,22 @@ class _DailyTab extends StatelessWidget {
 						},
 					),
 				),
+				Padding(
+					padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+					child: Row(
+						children: [
+							const Expanded(child: Divider()),
+							Padding(
+								padding: const EdgeInsets.symmetric(horizontal: 8),
+								child: Chip(
+									label: const Text('إجماليات اليوم'),
+									backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+								),
+							),
+							const Expanded(child: Divider()),
+						],
+					),
+				),
 				Expanded(child: _TotalsList(map: state.dailyTotals)),
 			]);
 		});

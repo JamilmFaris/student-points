@@ -16,6 +16,7 @@ class StudentsScreen extends StatelessWidget {
 						builder: (context, state) {
 							if (state.loading) return const Center(child: CircularProgressIndicator());
 							return ListView.builder(
+								padding: const EdgeInsets.only(bottom: 96),
 								itemCount: state.students.length,
 								itemBuilder: (context, index) {
 									final s = state.students[index];

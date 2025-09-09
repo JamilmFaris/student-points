@@ -8,7 +8,7 @@ class HomeScreen extends StatelessWidget {
 		return Directionality(
 			textDirection: TextDirection.rtl,
 			child: Scaffold(
-				appBar: AppBar(title: const Text('السلام عليكم ورحمة الله')),
+				appBar: AppBar(title: Center(child: const Text('السلام عليكم ورحمة الله'))),
 				body: SafeArea(
 					child: LayoutBuilder(
 						builder: (context, constraints) {

@@ -19,6 +19,7 @@ class HabitsScreen extends StatelessWidget {
 						builder: (context, state) {
 							if (state.loading) return const Center(child: CircularProgressIndicator());
 							return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 96),
 								itemCount: state.habits.length,
 								itemBuilder: (context, index) {
 									final h = state.habits[index];
