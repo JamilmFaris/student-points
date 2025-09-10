@@ -21,7 +21,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 3,
+			version: 4,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -34,7 +34,8 @@ class AppDatabase {
 						id INTEGER PRIMARY KEY AUTOINCREMENT,
 						name TEXT NOT NULL,
 						points INTEGER NOT NULL,
-						allow_negative INTEGER NOT NULL DEFAULT 0
+						allow_negative INTEGER NOT NULL DEFAULT 0,
+						once_per_day INTEGER NOT NULL DEFAULT 0
 					);
 				''');
 				await db.execute('''
@@ -64,6 +65,20 @@ class AppDatabase {
 				}
 				if (oldVersion < 3) {
 					await db.execute('ALTER TABLE habits ADD COLUMN allow_negative INTEGER NOT NULL DEFAULT 0');
+				}
+				if (oldVersion < 4) {
+					await db.execute('ALTER TABLE habits ADD COLUMN once_per_day INTEGER NOT NULL DEFAULT 0');
+				}
+			},
+			onOpen: (db) async {
+				// Defensive: ensure columns exist in case prior migration was skipped
+				final cols = await db.rawQuery('PRAGMA table_info(habits)');
+				final names = cols.map((e) => e['name'] as String).toSet();
+				if (!names.contains('allow_negative')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN allow_negative INTEGER NOT NULL DEFAULT 0');
+				}
+				if (!names.contains('once_per_day')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN once_per_day INTEGER NOT NULL DEFAULT 0');
 				}
 			},
 		);

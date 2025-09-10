@@ -216,33 +216,63 @@ class _TrackingTableState extends State<_TrackingTable> {
 																				return Text('$total', style: const TextStyle(fontWeight: FontWeight.w600));
 																			}), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
 																			for (final h in habits)
-																				_cell(Row(
-																					mainAxisSize: MainAxisSize.min,
-																					children: [
-																						if (h.allowNegative)
-																							IconButton(
-																							icon: const Icon(Icons.remove),
-																							color: scheme.error,
-																							onPressed: () => context.read<TrackingCubit>().decrement(students[i].id!, h.id!),
-																						),
-																						Builder(builder: (context) {
-																							final counts = tState.countsByStudentHabit[students[i].id] ?? {};
-																							final c = counts[h.id] ?? 0;
-																							return Text('$c', style: const TextStyle(fontWeight: FontWeight.w500));
-																						}),
-																						IconButton(
-																							icon: const Icon(Icons.add),
-																							color: scheme.primary,
-																							onPressed: () => context.read<TrackingCubit>().increment(students[i].id!, h.id!),
-																						),
-																					],
-																				), width: _habitColumnWidth, backgroundColor: (() {
+																				Builder(builder: (context) {
 																					final counts = tState.countsByStudentHabit[students[i].id] ?? {};
 																					final c = counts[h.id] ?? 0;
-																					if (c > 0) return scheme.primary.withOpacity(0.08);
-																					if (c < 0) return scheme.error.withOpacity(0.07);
-																					return _zebraColor(i);
-																				})()),
+																					if (h.oncePerDay && !h.allowNegative) {
+																						return _cell(
+																							Checkbox(
+																								value: c > 0,
+																								onChanged: (v) {
+																									if (v == true && c <= 0) {
+																										context.read<TrackingCubit>().increment(students[i].id!, h.id!);
+																									} else if (v == false && c > 0) {
+																										context.read<TrackingCubit>().decrement(students[i].id!, h.id!);
+																									}
+																								},
+																							),
+																							width: _habitColumnWidth,
+																							backgroundColor: c > 0 ? scheme.primary.withOpacity(0.08) : _zebraColor(i),
+																						);
+																					}
+																					return _cell(
+																						Row(
+																							mainAxisSize: MainAxisSize.min,
+																							children: [
+																								if (h.allowNegative)
+																									IconButton(
+																										icon: const Icon(Icons.remove),
+																										color: scheme.error,
+																										onPressed: () => context.read<TrackingCubit>().decrement(students[i].id!, h.id!),
+																									),
+																								Builder(builder: (context) {
+																									final counts = tState.countsByStudentHabit[students[i].id] ?? {};
+																									final c = counts[h.id] ?? 0;
+																									final displayed = h.oncePerDay ? (c > 0 ? 1 : (h.allowNegative ? (c < 0 ? -1 : 0) : (c > 0 ? 1 : 0))) : c;
+																									return Text('$displayed', style: const TextStyle(fontWeight: FontWeight.w500));
+																								}),
+																								IconButton(
+																									icon: const Icon(Icons.add),
+																									color: scheme.primary,
+																									onPressed: () {
+																										final counts = tState.countsByStudentHabit[students[i].id] ?? {};
+																										final c = counts[h.id] ?? 0;
+																										if (h.oncePerDay && c >= 1) return;
+																										context.read<TrackingCubit>().increment(students[i].id!, h.id!);
+																									},
+																								),
+																							],
+																						),
+																						width: _habitColumnWidth,
+																						backgroundColor: (() {
+																							final counts = tState.countsByStudentHabit[students[i].id] ?? {};
+																							final c = counts[h.id] ?? 0;
+																							if (c > 0) return scheme.primary.withOpacity(0.08);
+																							if (c < 0) return scheme.error.withOpacity(0.07);
+																							return _zebraColor(i);
+																						})(),
+																					);
+																				}),
 																		],
 																	),
 															],

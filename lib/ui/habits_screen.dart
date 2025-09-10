@@ -33,11 +33,11 @@ class HabitsScreen extends StatelessWidget {
 												IconButton(
 													icon: const Icon(Icons.edit),
 													onPressed: () async {
-														final result = await _promptHabit(context, name: h.name, points: h.points.toString(), allowNegative: h.allowNegative);
+														final result = await _promptHabit(context, name: h.name, points: h.points.toString(), allowNegative: h.allowNegative, oncePerDay: h.oncePerDay);
 														if (result != null) {
 															try {
 																await context.read<HabitsCubit>().updateHabit(
-																	h.copyWith(name: result.$1, points: int.parse(result.$2), allowNegative: result.$3),
+																	h.copyWith(name: result.$1, points: int.parse(result.$2), allowNegative: result.$3, oncePerDay: result.$4),
 																);
 																ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث العادة')));
 															} catch (e) {
@@ -73,12 +73,13 @@ class HabitsScreen extends StatelessWidget {
 		);
 	}
 
-	Future<(String, String, bool)?> _promptHabit(BuildContext context, {String? name, String? points, bool? allowNegative}) async {
+	Future<(String, String, bool, bool)?> _promptHabit(BuildContext context, {String? name, String? points, bool? allowNegative, bool? oncePerDay}) async {
 		final nameController = TextEditingController(text: name ?? '');
 		final pointsController = TextEditingController(text: points ?? '1');
 		bool allowNegativeValue = allowNegative ?? false;
+		bool oncePerDayValue = oncePerDay ?? false;
 		final nameFocusNode = FocusNode();
-		return showDialog<(String, String, bool)>(
+		return showDialog<(String, String, bool, bool)>(
 			context: context,
 			builder: (context) {
 				WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -86,15 +87,15 @@ class HabitsScreen extends StatelessWidget {
 				});
 				return AlertDialog(
 					scrollable: true,
-					title: const Text('العادة'),
+				title: const Text('العادة'),
 					content: StatefulBuilder(
 						builder: (context, setState) {
 							return Padding(
 								padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
 								child: SingleChildScrollView(
 									child: Column(
-										mainAxisSize: MainAxisSize.min,
-										children: [
+					mainAxisSize: MainAxisSize.min,
+					children: [
 											TextField(
 												controller: nameController, 
 												decoration: const InputDecoration(labelText: 'الاسم'), 
@@ -131,6 +132,27 @@ class HabitsScreen extends StatelessWidget {
 												groupValue: allowNegativeValue,
 												onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
 											),
+											const Divider(height: 16),
+											Align(
+												alignment: Alignment.centerRight,
+												child: Text('تكرار التنفيذ', style: Theme.of(context).textTheme.bodyMedium),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('مرة واحدة يومياً'),
+												subtitle: const Text('لا يمكن إضافة أكثر من مرة في اليوم'),
+												value: true,
+												groupValue: oncePerDayValue,
+												onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('عدة مرات في اليوم'),
+												subtitle: const Text('يمكن الإضافة أكثر من مرة'),
+												value: false,
+												groupValue: oncePerDayValue,
+												onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+											),
 										],
 									),
 								),
@@ -139,7 +161,7 @@ class HabitsScreen extends StatelessWidget {
 					),
 					actions: [
 						TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-						TextButton(onPressed: () => Navigator.pop(context, (nameController.text, pointsController.text, allowNegativeValue)), child: const Text('حفظ')),
+						TextButton(onPressed: () => Navigator.pop(context, (nameController.text, pointsController.text, allowNegativeValue, oncePerDayValue)), child: const Text('حفظ')),
 					],
 				);
 			},
@@ -153,7 +175,7 @@ class HabitsScreen extends StatelessWidget {
 			final String name = result.name.trim();
 			final int points = int.tryParse(result.points) ?? 1;
 			if (name.isNotEmpty) {
-				await context.read<HabitsCubit>().addHabit(name, points, allowNegative: result.allowNegative);
+				await context.read<HabitsCubit>().addHabit(name, points, allowNegative: result.allowNegative, oncePerDay: result.oncePerDay);
 				ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة العادة')));
 			}
 			if (!result.addAnother) return;
@@ -165,6 +187,7 @@ class HabitsScreen extends StatelessWidget {
 		final pointsController = TextEditingController(text: '1');
 		final nameFocusNode = FocusNode();
 		bool allowNegativeValue = false;
+		bool oncePerDayValue = false;
 		return showDialog<_HabitAddDialogResult>(
 			context: context,
 			builder: (context) {
@@ -218,20 +241,41 @@ class HabitsScreen extends StatelessWidget {
 												groupValue: allowNegativeValue,
 												onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
 											),
+											const Divider(height: 16),
+											Align(
+												alignment: Alignment.centerRight,
+												child: Text('تكرار التنفيذ', style: Theme.of(context).textTheme.bodyMedium),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('مرة واحدة يومياً'),
+												subtitle: const Text('لا يمكن إضافة أكثر من مرة في اليوم'),
+												value: true,
+												groupValue: oncePerDayValue,
+												onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('عدة مرات في اليوم'),
+												subtitle: const Text('يمكن الإضافة أكثر من مرة'),
+												value: false,
+												groupValue: oncePerDayValue,
+												onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+											),
 										],
 									),
 								),
 							);
 						},
-					),
-					actions: [
-						TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+				),
+				actions: [
+					TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
 						TextButton(
-							onPressed: () => Navigator.pop(context, _HabitAddDialogResult(nameController.text, pointsController.text, allowNegativeValue, false)),
+							onPressed: () => Navigator.pop(context, _HabitAddDialogResult(nameController.text, pointsController.text, allowNegativeValue, oncePerDayValue, false)),
 							child: const Text('حفظ'),
 						),
 						TextButton(
-							onPressed: () => Navigator.pop(context, _HabitAddDialogResult(nameController.text, pointsController.text, allowNegativeValue, true)),
+							onPressed: () => Navigator.pop(context, _HabitAddDialogResult(nameController.text, pointsController.text, allowNegativeValue, oncePerDayValue, true)),
 							child: const Text('حفظ وإضافة آخر'),
 						),
 					],
@@ -245,9 +289,10 @@ class _HabitAddDialogResult {
 	final String name;
 	final String points;
 	final bool allowNegative;
+	final bool oncePerDay;
 	final bool addAnother;
 
-	_HabitAddDialogResult(this.name, this.points, this.allowNegative, this.addAnother);
+	_HabitAddDialogResult(this.name, this.points, this.allowNegative, this.oncePerDay, this.addAnother);
 }
 
 

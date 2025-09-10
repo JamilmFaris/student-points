@@ -34,8 +34,8 @@ class HabitsCubit extends Cubit<HabitsState> {
 		}
 	}
 
-	Future<void> addHabit(String name, int points, {bool allowNegative = false}) async {
-		await _repo.insert(Habit(name: name, points: points, allowNegative: allowNegative));
+	Future<void> addHabit(String name, int points, {bool allowNegative = false, bool oncePerDay = false}) async {
+		await _repo.insert(Habit(name: name, points: points, allowNegative: allowNegative, oncePerDay: oncePerDay));
 		await load();
 	}
 
