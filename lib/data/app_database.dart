@@ -21,12 +21,13 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 4,
+			version: 5,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
 						id INTEGER PRIMARY KEY AUTOINCREMENT,
-						name TEXT NOT NULL
+						name TEXT NOT NULL,
+						sort_order INTEGER NOT NULL DEFAULT 0
 					);
 				''');
 				await db.execute('''
@@ -69,16 +70,24 @@ class AppDatabase {
 				if (oldVersion < 4) {
 					await db.execute('ALTER TABLE habits ADD COLUMN once_per_day INTEGER NOT NULL DEFAULT 0');
 				}
+				if (oldVersion < 5) {
+					await db.execute('ALTER TABLE students ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+				}
 			},
 			onOpen: (db) async {
 				// Defensive: ensure columns exist in case prior migration was skipped
-				final cols = await db.rawQuery('PRAGMA table_info(habits)');
-				final names = cols.map((e) => e['name'] as String).toSet();
+				final colsHabits = await db.rawQuery('PRAGMA table_info(habits)');
+				final names = colsHabits.map((e) => e['name'] as String).toSet();
 				if (!names.contains('allow_negative')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN allow_negative INTEGER NOT NULL DEFAULT 0');
 				}
 				if (!names.contains('once_per_day')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN once_per_day INTEGER NOT NULL DEFAULT 0');
+				}
+				final colsStudents = await db.rawQuery('PRAGMA table_info(students)');
+				final sNames = colsStudents.map((e) => e['name'] as String).toSet();
+				if (!sNames.contains('sort_order')) {
+					await db.execute('ALTER TABLE students ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
 				}
 			},
 		);

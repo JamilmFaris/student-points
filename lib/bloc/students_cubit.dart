@@ -48,6 +48,15 @@ class StudentsCubit extends Cubit<StudentsState> {
 		await _repo.delete(id);
 		await load();
 	}
+
+	Future<void> reorderStudents(int oldIndex, int newIndex) async {
+		final current = List<Student>.from(state.students);
+		if (newIndex > oldIndex) newIndex -= 1;
+		final item = current.removeAt(oldIndex);
+		current.insert(newIndex, item);
+		emit(state.copyWith(students: current));
+		await _repo.updateOrder(current);
+	}
 }
 
 

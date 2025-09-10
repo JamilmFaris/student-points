@@ -15,16 +15,19 @@ class StudentsScreen extends StatelessWidget {
 					body: BlocBuilder<StudentsCubit, StudentsState>(
 						builder: (context, state) {
 							if (state.loading) return const Center(child: CircularProgressIndicator());
-							return ListView.builder(
+							return ReorderableListView.builder(
 								padding: const EdgeInsets.only(bottom: 96),
 								itemCount: state.students.length,
+								onReorder: (oldIndex, newIndex) => context.read<StudentsCubit>().reorderStudents(oldIndex, newIndex),
 								itemBuilder: (context, index) {
 									final s = state.students[index];
 									return ListTile(
+										key: ValueKey(s.id),
 										title: Text(s.name),
 										trailing: Row(
 											mainAxisSize: MainAxisSize.min,
 											children: [
+												ReorderableDragStartListener(index: index, child: const Icon(Icons.drag_handle)),
 												IconButton(
 													icon: const Icon(Icons.edit),
 													onPressed: () async {
