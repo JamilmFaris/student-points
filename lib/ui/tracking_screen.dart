@@ -219,7 +219,8 @@ class _TrackingTableState extends State<_TrackingTable> {
 																				_cell(Row(
 																					mainAxisSize: MainAxisSize.min,
 																					children: [
-																						IconButton(
+																						if (h.allowNegative)
+																							IconButton(
 																							icon: const Icon(Icons.remove),
 																							color: scheme.error,
 																							onPressed: () => context.read<TrackingCubit>().decrement(students[i].id!, h.id!),

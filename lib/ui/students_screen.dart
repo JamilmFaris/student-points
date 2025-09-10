@@ -47,10 +47,7 @@ class StudentsScreen extends StatelessWidget {
 					),
 					floatingActionButton: FloatingActionButton.extended(
 						onPressed: () async {
-							final name = await _promptName(context);
-							if (name != null && name.trim().isNotEmpty) {
-								context.read<StudentsCubit>().addStudent(name.trim());
-							}
+							await _addStudentsFlow(context);
 						},
 						label: const Text('إضافة طالب'),
 						icon: const Icon(Icons.add),
@@ -73,6 +70,47 @@ class StudentsScreen extends StatelessWidget {
 			),
 		);
 	}
+
+	Future<void> _addStudentsFlow(BuildContext context) async {
+		while (true) {
+			final result = await _promptNameForAdd(context);
+			if (result == null) return;
+			final name = result.name.trim();
+			if (name.isNotEmpty) {
+				await context.read<StudentsCubit>().addStudent(name);
+			}
+			if (!result.addAnother) return;
+		}
+	}
+
+	Future<_NameDialogResult?> _promptNameForAdd(BuildContext context) async {
+		final controller = TextEditingController(text: '');
+		return showDialog<_NameDialogResult>(
+			context: context,
+			builder: (context) => AlertDialog(
+				title: const Text('اسم الطالب'),
+				content: TextField(controller: controller, textDirection: TextDirection.rtl, autofocus: true),
+				actions: [
+					TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+					TextButton(
+						onPressed: () => Navigator.pop(context, _NameDialogResult(controller.text, false)),
+						child: const Text('حفظ'),
+					),
+					TextButton(
+						onPressed: () => Navigator.pop(context, _NameDialogResult(controller.text, true)),
+						child: const Text('حفظ وإضافة آخر'),
+					),
+				],
+			),
+		);
+	}
+}
+
+class _NameDialogResult {
+	final String name;
+	final bool addAnother;
+
+	_NameDialogResult(this.name, this.addAnother);
 }
 
 
