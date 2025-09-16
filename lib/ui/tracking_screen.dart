@@ -7,6 +7,7 @@ import '../bloc/tracking_cubit.dart';
 import '../repositories/habit_repository.dart';
 import '../repositories/student_repository.dart';
 import '../repositories/tracking_repository.dart';
+import '../models/habit.dart';
 
 class TrackingScreen extends StatelessWidget {
 	const TrackingScreen({super.key});
@@ -53,6 +54,16 @@ class _TrackingTableState extends State<_TrackingTable> {
 	static const double _leftColumnWidth = 140;
 	static const double _totalColumnWidth = 80;
 	static const double _habitColumnWidth = 115;
+	// Adaptive widths
+	static const double _checkboxColumnWidth = 64; // once per day, no negative (Checkbox only)
+	static const double _singleAdjustColumnWidth = 92; // + and number
+	static const double _plusMinusColumnWidth = 128; // - number +
+
+	double _widthForHabit(Habit h) {
+		if (h.oncePerDay && !h.allowNegative) return _checkboxColumnWidth;
+		if (h.allowNegative) return _plusMinusColumnWidth;
+		return _singleAdjustColumnWidth;
+	}
 
 	static const double _rowHeight = 56;
 	static const double _headerHeight = 56;
@@ -167,7 +178,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 													children: [
 														_headerCell(const Text('المجموع'), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
 														for (final h in habits)
-															_headerCell(Center(child: Text(h.name)), width: _habitColumnWidth, backgroundColor: scheme.primaryContainer),
+															_headerCell(Center(child: Text(h.name)), width: _widthForHabit(h), backgroundColor: scheme.primaryContainer),
 													],
 												),
 											),
@@ -231,7 +242,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 																									}
 																								},
 																							),
-																							width: _habitColumnWidth,
+																							width: _widthForHabit(h),
 																							backgroundColor: c > 0 ? scheme.primary.withOpacity(0.08) : _zebraColor(i),
 																						);
 																					}
@@ -263,7 +274,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 																								),
 																							],
 																						),
-																						width: _habitColumnWidth,
+																						width: _widthForHabit(h),
 																						backgroundColor: (() {
 																							final counts = tState.countsByStudentHabit[students[i].id] ?? {};
 																							final c = counts[h.id] ?? 0;
