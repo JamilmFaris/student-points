@@ -23,7 +23,7 @@ class TrackingScreen extends StatelessWidget {
 				],
 				child: Scaffold(
 					appBar: AppBar(title: const Text('تتبع النقاط لليوم')),
-					body: const _TrackingTable(),
+					body: SafeArea(top: false, left: false, right: false, bottom: true, child: const _TrackingTable()),
 					floatingActionButton: Builder(
 						builder: (context) {
 							return FloatingActionButton.extended(
