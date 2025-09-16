@@ -52,11 +52,11 @@ class _TrackingTable extends StatefulWidget {
 
 class _TrackingTableState extends State<_TrackingTable> {
 	static const double _leftColumnWidth = 140;
-	static const double _totalColumnWidth = 80;
+	static const double _totalColumnWidth = 55;
 	static const double _habitColumnWidth = 115;
 	// Adaptive widths
 	static const double _checkboxColumnWidth = 64; // once per day, no negative (Checkbox only)
-	static const double _singleAdjustColumnWidth = 92; // + and number
+	static const double _singleAdjustColumnWidth = 75; // + and number
 	static const double _plusMinusColumnWidth = 128; // - number +
 
 	double _widthForHabit(Habit h) {
@@ -87,14 +87,6 @@ class _TrackingTableState extends State<_TrackingTable> {
 				_verticalLeftController.offset != _verticalBodyController.offset) {
 				_verticalLeftController.jumpTo(_verticalBodyController.offset);
 			}
-		});
-		WidgetsBinding.instance.addPostFrameCallback((_) {
-			final messenger = ScaffoldMessenger.of(context);
-			messenger.clearSnackBars();
-			messenger.showSnackBar(const SnackBar(
-				content: Text('لزيادة النقاط: كل ضغطة تزيد بعدد نقاط العادة (مرتين = 2×النقاط).'),
-				duration: Duration(seconds: 6),
-			));
 		});
 	}
 
@@ -169,6 +161,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 								Row(
 									children: [
 										_headerCell(const Text('الطالب'), width: _leftColumnWidth, backgroundColor: scheme.primaryContainer),
+										_headerCell(const Text('المجموع'), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
 										Expanded(
 											child: SingleChildScrollView(
 												controller: _horizontalHeaderController,
@@ -176,7 +169,6 @@ class _TrackingTableState extends State<_TrackingTable> {
 												scrollDirection: Axis.horizontal,
 												child: Row(
 													children: [
-														_headerCell(const Text('المجموع'), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
 														for (final h in habits)
 															_headerCell(Center(child: Text(h.name)), width: _widthForHabit(h), backgroundColor: scheme.primaryContainer),
 													],
@@ -194,13 +186,30 @@ class _TrackingTableState extends State<_TrackingTable> {
 												child: Column(
 													children: [
 														for (int i = 0; i < students.length; i++)
-															_cell(Align(
-																alignment: Alignment.center,
-																child: Padding(
-																	padding: const EdgeInsets.symmetric(horizontal: 8),
-																	child: Text(students[i].name),
-																),
-															), width: _leftColumnWidth, backgroundColor: _zebraColor(i)),
+															Row(children: [
+																_cell(Align(
+																	alignment: Alignment.center,
+																	child: Padding(
+																		padding: const EdgeInsets.symmetric(horizontal: 8),
+																		child: Text(students[i].name),
+																	),
+																), width: _leftColumnWidth, backgroundColor: _zebraColor(i)),
+																_cell(Builder(builder: (context) {
+																	final student = students[i];
+																	final counts = tState.countsByStudentHabit[student.id] ?? {};
+																	int total = 0;
+																	for (final h in habits) {
+																		final c = counts[h.id] ?? 0;
+																		if (c >= 0) {
+																			total += c * h.points;
+																		} else {
+																			final neg = -c;
+																			total += -(neg * h.decreasePoints);
+																		}
+																	}
+																	return Text('$total', style: const TextStyle(fontWeight: FontWeight.w600));
+																}), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
+															]),
 													],
 												),
 											),
@@ -216,21 +225,6 @@ class _TrackingTableState extends State<_TrackingTable> {
 																for (int i = 0; i < students.length; i++)
 																	Row(
 																		children: [
-																			_cell(Builder(builder: (context) {
-																				final student = students[i];
-																				final counts = tState.countsByStudentHabit[student.id] ?? {};
-																				int total = 0;
-																				for (final h in habits) {
-																					final c = counts[h.id] ?? 0;
-																					if (c >= 0) {
-																						total += c * h.points;
-																					} else {
-																						final neg = -c;
-																						total += -(neg * h.decreasePoints);
-																					}
-																				}
-																				return Text('$total', style: const TextStyle(fontWeight: FontWeight.w600));
-																			}), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
 																			for (final h in habits)
 																				Builder(builder: (context) {
 																					final counts = tState.countsByStudentHabit[students[i].id] ?? {};
