@@ -38,13 +38,14 @@ class TrackingRepository {
 		final db = await AppDatabase().database;
 		await db.transaction((txn) async {
 			for (final e in entries) {
-				final habitRows = await txn.query('habits', columns: ['points'], where: 'id = ?', whereArgs: [e.habitId], limit: 1);
+				final habitRows = await txn.query('habits', columns: ['points','decrease_points'], where: 'id = ?', whereArgs: [e.habitId], limit: 1);
 				final habitPoints = (habitRows.first['points'] as int);
+				final habitDecreasePoints = (habitRows.first['decrease_points'] as int? ?? habitPoints);
 				await txn.insert(
 					'daily_entries',
 					{
 						...e.toMap(),
-						'points_earned': e.count * habitPoints,
+						'points_earned': (e.count >= 0 ? e.count * habitPoints : (-e.count) * -habitDecreasePoints),
 					},
 					conflictAlgorithm: ConflictAlgorithm.replace,
 				);
@@ -58,8 +59,9 @@ class TrackingRepository {
 		await db.transaction((txn) async {
 			await txn.delete('daily_entries', where: 'date = ?', whereArgs: [d]);
 			// Preload habit points into a map to avoid repeated queries
-			final habitRows = await txn.query('habits', columns: ['id', 'points']);
+			final habitRows = await txn.query('habits', columns: ['id', 'points', 'decrease_points']);
 			final habitIdToPoints = {for (final r in habitRows) r['id'] as int: r['points'] as int};
+			final habitIdToDecreasePoints = {for (final r in habitRows) r['id'] as int: (r['decrease_points'] as int? ?? (r['points'] as int))};
 			for (final entry in counts.entries) {
 				final studentId = entry.key;
 				final habits = entry.value;
@@ -67,7 +69,9 @@ class TrackingRepository {
 					final habitId = h.key;
 					final count = h.value;
 					if (count == 0) continue;
-					final points = (habitIdToPoints[habitId] ?? 0) * count;
+					final inc = habitIdToPoints[habitId] ?? 0;
+					final dec = habitIdToDecreasePoints[habitId] ?? inc;
+					final points = count >= 0 ? inc * count : -dec * (-count);
 					await txn.insert('daily_entries', {
 						'date': d,
 						'student_id': studentId,

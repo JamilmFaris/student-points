@@ -21,7 +21,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 5,
+			version: 6,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -35,6 +35,7 @@ class AppDatabase {
 						id INTEGER PRIMARY KEY AUTOINCREMENT,
 						name TEXT NOT NULL,
 						points INTEGER NOT NULL,
+						decrease_points INTEGER NOT NULL DEFAULT 0,
 						allow_negative INTEGER NOT NULL DEFAULT 0,
 						once_per_day INTEGER NOT NULL DEFAULT 0
 					);
@@ -73,6 +74,10 @@ class AppDatabase {
 				if (oldVersion < 5) {
 					await db.execute('ALTER TABLE students ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
 				}
+				if (oldVersion < 6) {
+					await db.execute('ALTER TABLE habits ADD COLUMN decrease_points INTEGER');
+					await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
+				}
 			},
 			onOpen: (db) async {
 				// Defensive: ensure columns exist in case prior migration was skipped
@@ -83,6 +88,10 @@ class AppDatabase {
 				}
 				if (!names.contains('once_per_day')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN once_per_day INTEGER NOT NULL DEFAULT 0');
+				}
+				if (!names.contains('decrease_points')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN decrease_points INTEGER');
+					await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
 				}
 				final colsStudents = await db.rawQuery('PRAGMA table_info(students)');
 				final sNames = colsStudents.map((e) => e['name'] as String).toSet();
