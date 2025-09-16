@@ -222,7 +222,12 @@ class _TrackingTableState extends State<_TrackingTable> {
 																				int total = 0;
 																				for (final h in habits) {
 																					final c = counts[h.id] ?? 0;
-																					total += c * h.points;
+																					if (c >= 0) {
+																						total += c * h.points;
+																					} else {
+																						final neg = -c;
+																						total += -(neg * h.decreasePoints);
+																					}
 																				}
 																				return Text('$total', style: const TextStyle(fontWeight: FontWeight.w600));
 																			}), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
@@ -246,6 +251,17 @@ class _TrackingTableState extends State<_TrackingTable> {
 																							backgroundColor: c > 0 ? scheme.primary.withOpacity(0.08) : _zebraColor(i),
 																						);
 																					}
+																					int displayedPoints;
+																					if (h.oncePerDay && !h.allowNegative) {
+																						displayedPoints = c > 0 ? h.points : 0;
+																					} else {
+																						if (c >= 0) {
+																							displayedPoints = c * h.points;
+																						} else {
+																							final neg = -c;
+																							displayedPoints = -(neg * h.decreasePoints);
+																						}
+																					}
 																					return _cell(
 																						Row(
 																							mainAxisSize: MainAxisSize.min,
@@ -256,12 +272,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 																										color: scheme.error,
 																										onPressed: () => context.read<TrackingCubit>().decrement(students[i].id!, h.id!),
 																									),
-																								Builder(builder: (context) {
-																									final counts = tState.countsByStudentHabit[students[i].id] ?? {};
-																									final c = counts[h.id] ?? 0;
-																									final displayed = h.oncePerDay ? (c > 0 ? 1 : (h.allowNegative ? (c < 0 ? -1 : 0) : (c > 0 ? 1 : 0))) : c;
-																									return Text('$displayed', style: const TextStyle(fontWeight: FontWeight.w500));
-																								}),
+																								Text('$displayedPoints', style: const TextStyle(fontWeight: FontWeight.w500)),
 																								IconButton(
 																									icon: const Icon(Icons.add),
 																									color: scheme.primary,
