@@ -4,8 +4,6 @@ import 'package:flutter/services.dart';
 
 import '../bloc/habits_cubit.dart';
 import '../repositories/habit_repository.dart';
-import '../repositories/tracking_repository.dart';
-import 'widgets/habit_progress_chart.dart';
 
 class HabitsScreen extends StatelessWidget {
 	const HabitsScreen({super.key});
@@ -31,7 +29,7 @@ class HabitsScreen extends StatelessWidget {
 										subtitle: Text(h.allowNegative ? 'زيادة: ${h.points} | إنقاص: ${h.decreasePoints}' : 'النقاط: ${h.points}'),
 										trailing: Row(
 											mainAxisSize: MainAxisSize.min,
-								children: [
+											children: [
 												IconButton(
 													icon: const Icon(Icons.edit),
 													onPressed: () async {
@@ -43,37 +41,11 @@ class HabitsScreen extends StatelessWidget {
 																);
 																ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث العادة')));
 															} catch (e) {
-																print(e); 
+																print(e);
 															}
 														}
 													},
-									),
-									IconButton(
-										icon: const Icon(Icons.show_chart),
-										onPressed: () async {
-											final now = DateTime.now();
-											final start = now.subtract(const Duration(days: 29));
-											// Open bottom sheet with chart
-											await showModalBottomSheet(
-												context: context,
-												isScrollControlled: true,
-												builder: (ctx) {
-													return Directionality(
-														textDirection: TextDirection.rtl,
-														child: Padding(
-															padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-															child: HabitProgressChart(
-																habit: h,
-																startDate: DateTime(start.year, start.month, start.day),
-																endDate: DateTime(now.year, now.month, now.day),
-																repo: TrackingRepository(),
-															),
-														),
-													);
-											},
-											);
-										},
-									),
+												),
 												IconButton(
 													icon: const Icon(Icons.delete),
 													onPressed: () => context.read<HabitsCubit>().deleteHabit(h.id!),
@@ -116,7 +88,7 @@ class HabitsScreen extends StatelessWidget {
 				});
 				return AlertDialog(
 					scrollable: true,
-				title: const Text('العادة'),
+					title: const Text('العادة'),
 					content: StatefulBuilder(
 						builder: (context, setState) {
 							return Padding(
@@ -125,21 +97,21 @@ class HabitsScreen extends StatelessWidget {
 									child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-											TextField(
-												controller: nameController, 
-												decoration: const InputDecoration(labelText: 'الاسم'), 
-												textDirection: TextDirection.rtl,
-												autofocus: true,
-												focusNode: nameFocusNode,
-											),
-											TextField(
-												controller: pointsController,
-												decoration: const InputDecoration(labelText: 'النقاط'),
-												keyboardType: TextInputType.number,
-												textDirection: TextDirection.ltr,
-												textAlign: TextAlign.left,
-												inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-											),
+										TextField(
+											controller: nameController,
+											decoration: const InputDecoration(labelText: 'الاسم'),
+											textDirection: TextDirection.rtl,
+											autofocus: true,
+											focusNode: nameFocusNode,
+										),
+										TextField(
+											controller: pointsController,
+											decoration: const InputDecoration(labelText: 'النقاط'),
+											keyboardType: TextInputType.number,
+											textDirection: TextDirection.ltr,
+											textAlign: TextAlign.left,
+											inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+										),
                                 AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 150),
                                     child: allowNegativeValue
@@ -159,53 +131,53 @@ class HabitsScreen extends StatelessWidget {
                                           )
                                         : const SizedBox.shrink(),
                                 ),
-										const SizedBox(height: 8),
-										Align(
-											alignment: Alignment.centerRight,
-											child: Text('نوع العادة', style: Theme.of(context).textTheme.bodyMedium),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('إضافة فقط'),
-											subtitle: const Text('لا يمكن الطرح (قيم سالبة)'),
-											value: false,
-											groupValue: allowNegativeValue,
-											onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('السماح بالطرح'),
-											subtitle: const Text('يمكن زيادة أو إنقاص'),
-											value: true,
-											groupValue: allowNegativeValue,
-											onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
-										),
-										const Divider(height: 16),
-										Align(
-											alignment: Alignment.centerRight,
-											child: Text('تكرار التنفيذ', style: Theme.of(context).textTheme.bodyMedium),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('مرة واحدة يومياً'),
-											subtitle: const Text('لا يمكن إضافة أكثر من مرة في اليوم'),
-											value: true,
-											groupValue: oncePerDayValue,
-											onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('عدة مرات في اليوم'),
-											subtitle: const Text('يمكن الإضافة أكثر من مرة'),
-											value: false,
-											groupValue: oncePerDayValue,
-											onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
-										),
-									],
+									const SizedBox(height: 8),
+									Align(
+										alignment: Alignment.centerRight,
+										child: Text('نوع العادة', style: Theme.of(context).textTheme.bodyMedium),
+									),
+									RadioListTile<bool>(
+										contentPadding: EdgeInsets.zero,
+										title: const Text('إضافة فقط'),
+										subtitle: const Text('لا يمكن الطرح (قيم سالبة)'),
+										value: false,
+										groupValue: allowNegativeValue,
+										onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
+									),
+									RadioListTile<bool>(
+										contentPadding: EdgeInsets.zero,
+										title: const Text('السماح بالطرح'),
+										subtitle: const Text('يمكن زيادة أو إنقاص'),
+										value: true,
+										groupValue: allowNegativeValue,
+										onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
+									),
+									const Divider(height: 16),
+									Align(
+										alignment: Alignment.centerRight,
+										child: Text('تكرار التنفيذ', style: Theme.of(context).textTheme.bodyMedium),
+									),
+									RadioListTile<bool>(
+										contentPadding: EdgeInsets.zero,
+										title: const Text('مرة واحدة يومياً'),
+										subtitle: const Text('لا يمكن إضافة أكثر من مرة في اليوم'),
+										value: true,
+										groupValue: oncePerDayValue,
+										onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+									),
+									RadioListTile<bool>(
+										contentPadding: EdgeInsets.zero,
+										title: const Text('عدة مرات في اليوم'),
+										subtitle: const Text('يمكن الإضافة أكثر من مرة'),
+										value: false,
+										groupValue: oncePerDayValue,
+										onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+									),
+								],
 								),
-							  )
-              );
-						},
+							),
+						);
+					},
 					),
 					actions: [
 						TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
@@ -289,53 +261,53 @@ class HabitsScreen extends StatelessWidget {
                                               )
                                             : const SizedBox.shrink(),
                                     ),
-										const SizedBox(height: 8),
-										Align(
-											alignment: Alignment.centerRight,
-											child: Text('نوع العادة', style: Theme.of(context).textTheme.bodyMedium),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('إضافة فقط'),
-											subtitle: const Text('لا يمكن الطرح (قيم سالبة)'),
-											value: false,
-											groupValue: allowNegativeValue,
-											onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('السماح بالطرح'),
-											subtitle: const Text('يمكن زيادة أو إنقاص'),
-											value: true,
-											groupValue: allowNegativeValue,
-											onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
-										),
-										const Divider(height: 16),
-										Align(
-											alignment: Alignment.centerRight,
-											child: Text('تكرار التنفيذ', style: Theme.of(context).textTheme.bodyMedium),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('مرة واحدة يومياً'),
-											subtitle: const Text('لا يمكن إضافة أكثر من مرة في اليوم'),
-											value: true,
-											groupValue: oncePerDayValue,
-											onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
-										),
-										RadioListTile<bool>(
-											contentPadding: EdgeInsets.zero,
-											title: const Text('عدة مرات في اليوم'),
-											subtitle: const Text('يمكن الإضافة أكثر من مرة'),
-											value: false,
-											groupValue: oncePerDayValue,
-											onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
-										),
-									],
-								  ),
-                )
-              );
-						},
+											const SizedBox(height: 8),
+											Align(
+												alignment: Alignment.centerRight,
+												child: Text('نوع العادة', style: Theme.of(context).textTheme.bodyMedium),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('إضافة فقط'),
+												subtitle: const Text('لا يمكن الطرح (قيم سالبة)'),
+												value: false,
+												groupValue: allowNegativeValue,
+												onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('السماح بالطرح'),
+												subtitle: const Text('يمكن زيادة أو إنقاص'),
+												value: true,
+												groupValue: allowNegativeValue,
+												onChanged: (v) => setState(() => allowNegativeValue = v ?? false),
+											),
+											const Divider(height: 16),
+											Align(
+												alignment: Alignment.centerRight,
+												child: Text('تكرار التنفيذ', style: Theme.of(context).textTheme.bodyMedium),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('مرة واحدة يومياً'),
+												subtitle: const Text('لا يمكن إضافة أكثر من مرة في اليوم'),
+												value: true,
+												groupValue: oncePerDayValue,
+												onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+											),
+											RadioListTile<bool>(
+												contentPadding: EdgeInsets.zero,
+												title: const Text('عدة مرات في اليوم'),
+												subtitle: const Text('يمكن الإضافة أكثر من مرة'),
+												value: false,
+												groupValue: oncePerDayValue,
+												onChanged: (v) => setState(() => oncePerDayValue = v ?? false),
+											),
+										],
+									),
+							),
+						);
+					},
 					),
 					actions: [
 						TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),

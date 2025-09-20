@@ -12,8 +12,9 @@ class HabitProgressChart extends StatefulWidget {
 	final DateTime startDate;
 	final DateTime endDate;
 	final TrackingRepository repo;
+	final int? fixedStudentId;
 
-	const HabitProgressChart({super.key, required this.habit, required this.startDate, required this.endDate, required this.repo});
+	const HabitProgressChart({super.key, required this.habit, required this.startDate, required this.endDate, required this.repo, this.fixedStudentId});
 
 	@override
 	State<HabitProgressChart> createState() => _HabitProgressChartState();
@@ -31,7 +32,11 @@ class _HabitProgressChartState extends State<HabitProgressChart> {
 		super.initState();
 		_startDate = widget.startDate;
 		_endDate = widget.endDate;
-		_loadStudents();
+		if (widget.fixedStudentId != null) {
+			_selectedStudentId = widget.fixedStudentId;
+		} else {
+			_loadStudents();
+		}
 		_loadSeries();
 	}
 
@@ -94,28 +99,29 @@ class _HabitProgressChartState extends State<HabitProgressChart> {
 							],
 						),
 						const SizedBox(height: 8),
-						Row(
-							children: [
-								Text('الطالب:', style: Theme.of(context).textTheme.bodyMedium),
-								const SizedBox(width: 12),
-								Expanded(
-									child: DropdownButton<int?>(
-										isExpanded: true,
-										value: _selectedStudentId,
-										items: [
-											const DropdownMenuItem<int?>(value: null, child: Text('الكل')),
-											..._students.map((s) => DropdownMenuItem<int?>(value: s.id, child: Text(s.name))).toList(),
-										],
-										onChanged: (v) {
-											setState(() {
-												_selectedStudentId = v;
-												_loadSeries();
-											});
-										},
-									),
-								),
+		if (widget.fixedStudentId == null)
+			Row(
+				children: [
+					Text('الطالب:', style: Theme.of(context).textTheme.bodyMedium),
+					const SizedBox(width: 12),
+					Expanded(
+						child: DropdownButton<int?>(
+							isExpanded: true,
+							value: _selectedStudentId,
+							items: [
+								const DropdownMenuItem<int?>(value: null, child: Text('الكل')),
+								..._students.map((s) => DropdownMenuItem<int?>(value: s.id, child: Text(s.name))).toList(),
 							],
+							onChanged: (v) {
+								setState(() {
+									_selectedStudentId = v;
+									_loadSeries();
+								});
+							},
 						),
+					),
+				],
+			),
 						const SizedBox(height: 8),
 						SingleChildScrollView(
 							scrollDirection: Axis.horizontal,

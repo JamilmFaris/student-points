@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/students_cubit.dart';
+import '../repositories/tracking_repository.dart';
+import '../repositories/habit_repository.dart';
+import '../models/habit.dart';
+import 'widgets/habit_progress_chart.dart';
 
 class StudentsScreen extends StatelessWidget {
 	const StudentsScreen({super.key});
@@ -35,6 +39,58 @@ class StudentsScreen extends StatelessWidget {
 														if (name != null && name.trim().isNotEmpty) {
 															context.read<StudentsCubit>().updateStudent(s.copyWith(name: name.trim()));
 														}
+													},
+												),
+												IconButton(
+													icon: const Icon(Icons.show_chart),
+													onPressed: () async {
+														final habits = await HabitRepository().getAll();
+														if (habits.isEmpty) return;
+														Habit? selectedHabit = habits.first;
+														final now = DateTime.now();
+														final start = now.subtract(const Duration(days: 29));
+														final habit = await showDialog<Habit>(
+															context: context,
+															builder: (ctx) {
+																return AlertDialog(
+																	title: const Text('اختر العادة'),
+																	content: StatefulBuilder(
+																		builder: (context, setState) {
+																		return DropdownButton<Habit>(
+																			isExpanded: true,
+																			value: selectedHabit,
+																			items: habits.map((h) => DropdownMenuItem(value: h, child: Text(h.name))).toList(),
+																			onChanged: (v) => setState(() => selectedHabit = v),
+																		);
+																	},
+																),
+																actions: [
+																	TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+																	TextButton(onPressed: () => Navigator.pop(ctx, selectedHabit), child: const Text('متابعة')),
+																],
+															);
+														},
+														);
+														if (habit == null) return;
+														showModalBottomSheet(
+															context: context,
+															isScrollControlled: true,
+															builder: (ctx) {
+																return Directionality(
+																	textDirection: TextDirection.rtl,
+																	child: Padding(
+																		padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+																		child: HabitProgressChart(
+																			habit: habit,
+																			startDate: DateTime(start.year, start.month, start.day),
+																			endDate: DateTime(now.year, now.month, now.day),
+																			repo: TrackingRepository(),
+																			fixedStudentId: s.id,
+																		),
+																	),
+																);
+															},
+														);
 													},
 												),
 												IconButton(
