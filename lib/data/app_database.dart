@@ -27,7 +27,14 @@ class AppDatabase {
 					CREATE TABLE students (
 						id INTEGER PRIMARY KEY AUTOINCREMENT,
 						name TEXT NOT NULL,
-						sort_order INTEGER NOT NULL DEFAULT 0
+						sort_order INTEGER NOT NULL DEFAULT 0,
+						date_of_birth TEXT,
+						school_name TEXT,
+						father_name TEXT,
+						mother_name TEXT,
+						phone_number TEXT,
+						birth_place TEXT,
+						grade TEXT
 					);
 				''');
 				await db.execute('''
@@ -54,7 +61,7 @@ class AppDatabase {
 					);
 				''');
 			},
-			onUpgrade: (db, oldVersion, newVersion) async {
+				onUpgrade: (db, oldVersion, newVersion) async {
 				if (oldVersion < 2) {
 					await db.execute('ALTER TABLE daily_entries ADD COLUMN points_earned INTEGER');
 					await db.execute('''
@@ -82,6 +89,16 @@ class AppDatabase {
 					}
 					await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
 				}
+				// Ensure new student columns exist on upgrade
+				final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
+				final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
+				if (!sNamesU.contains('date_of_birth')) await db.execute('ALTER TABLE students ADD COLUMN date_of_birth TEXT');
+				if (!sNamesU.contains('school_name')) await db.execute('ALTER TABLE students ADD COLUMN school_name TEXT');
+				if (!sNamesU.contains('father_name')) await db.execute('ALTER TABLE students ADD COLUMN father_name TEXT');
+				if (!sNamesU.contains('mother_name')) await db.execute('ALTER TABLE students ADD COLUMN mother_name TEXT');
+				if (!sNamesU.contains('phone_number')) await db.execute('ALTER TABLE students ADD COLUMN phone_number TEXT');
+				if (!sNamesU.contains('birth_place')) await db.execute('ALTER TABLE students ADD COLUMN birth_place TEXT');
+				if (!sNamesU.contains('grade')) await db.execute('ALTER TABLE students ADD COLUMN grade TEXT');
 			},
 			onOpen: (db) async {
 				// Defensive: ensure columns exist in case prior migration was skipped
@@ -102,6 +119,28 @@ class AppDatabase {
 				if (!sNames.contains('sort_order')) {
 					await db.execute('ALTER TABLE students ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
 				}
+				// Ensure new student info columns also exist
+				if (!sNames.contains('date_of_birth')) {
+					await db.execute('ALTER TABLE students ADD COLUMN date_of_birth TEXT');
+				}
+				if (!sNames.contains('school_name')) {
+					await db.execute('ALTER TABLE students ADD COLUMN school_name TEXT');
+				}
+				if (!sNames.contains('father_name')) {
+					await db.execute('ALTER TABLE students ADD COLUMN father_name TEXT');
+				}
+				if (!sNames.contains('mother_name')) {
+					await db.execute('ALTER TABLE students ADD COLUMN mother_name TEXT');
+				}
+				if (!sNames.contains('phone_number')) {
+					await db.execute('ALTER TABLE students ADD COLUMN phone_number TEXT');
+				}
+					if (!sNames.contains('birth_place')) {
+					await db.execute('ALTER TABLE students ADD COLUMN birth_place TEXT');
+				}
+					if (!sNames.contains('grade')) {
+						await db.execute('ALTER TABLE students ADD COLUMN grade TEXT');
+					}
 			},
 		);
 	}
