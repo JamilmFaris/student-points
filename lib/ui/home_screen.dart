@@ -22,12 +22,12 @@ class HomeScreen extends StatelessWidget {
 									crossAxisSpacing: 16,
 									children: [
 										_ActionCard(
-											label: 'إضافة طالب',
-											icon: Icons.person_add,
+											label: 'الطلاب',
+											icon: Icons.people,
 											onTap: () => Navigator.pushNamed(context, '/students'),
 										),
 										_ActionCard(
-											label: 'إضافة عادة',
+											label: 'العادات',
 											icon: Icons.fact_check,
 											onTap: () => Navigator.pushNamed(context, '/habits'),
 										),
