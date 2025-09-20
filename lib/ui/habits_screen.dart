@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 
 import '../bloc/habits_cubit.dart';
 import '../repositories/habit_repository.dart';
+import '../repositories/tracking_repository.dart';
+import 'widgets/habit_progress_chart.dart';
 
 class HabitsScreen extends StatelessWidget {
 	const HabitsScreen({super.key});
@@ -29,7 +31,7 @@ class HabitsScreen extends StatelessWidget {
 										subtitle: Text(h.allowNegative ? 'زيادة: ${h.points} | إنقاص: ${h.decreasePoints}' : 'النقاط: ${h.points}'),
 										trailing: Row(
 											mainAxisSize: MainAxisSize.min,
-											children: [
+								children: [
 												IconButton(
 													icon: const Icon(Icons.edit),
 													onPressed: () async {
@@ -45,7 +47,33 @@ class HabitsScreen extends StatelessWidget {
 															}
 														}
 													},
-												),
+									),
+									IconButton(
+										icon: const Icon(Icons.show_chart),
+										onPressed: () async {
+											final now = DateTime.now();
+											final start = now.subtract(const Duration(days: 29));
+											// Open bottom sheet with chart
+											await showModalBottomSheet(
+												context: context,
+												isScrollControlled: true,
+												builder: (ctx) {
+													return Directionality(
+														textDirection: TextDirection.rtl,
+														child: Padding(
+															padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+															child: HabitProgressChart(
+																habit: h,
+																startDate: DateTime(start.year, start.month, start.day),
+																endDate: DateTime(now.year, now.month, now.day),
+																repo: TrackingRepository(),
+															),
+														),
+													);
+											},
+											);
+										},
+									),
 												IconButton(
 													icon: const Icon(Icons.delete),
 													onPressed: () => context.read<HabitsCubit>().deleteHabit(h.id!),

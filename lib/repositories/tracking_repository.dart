@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../data/app_database.dart';
 import '../models/daily_entry.dart';
+import '../models/habit_daily_point.dart';
 
 class TrackingRepository {
 	Future<void> incrementHabitCount({required DateTime date, required int studentId, required int habitId}) async {
@@ -171,6 +172,34 @@ class TrackingRepository {
 			final points = r['points_earned'] as int? ?? 0;
 			result.putIfAbsent(studentId, () => {});
 			result[studentId]![habitId] = points;
+		}
+		return result;
+	}
+
+	Future<List<HabitDailyPoint>> getHabitDailyPointsSeries(int habitId, {required DateTime startDate, required DateTime endDate, int? studentId}) async {
+		final db = await AppDatabase().database;
+		final s = startDate.toIso8601String().substring(0, 10);
+		final e = endDate.toIso8601String().substring(0, 10);
+		var sql = '''
+			SELECT date, SUM(points_earned) as total
+			FROM daily_entries
+			WHERE habit_id = ? AND date BETWEEN ? AND ?
+		''';
+		final args = <Object?>[habitId, s, e];
+		if (studentId != null) {
+			sql += ' AND student_id = ?';
+			args.add(studentId);
+		}
+		sql += '\n\t\t\tGROUP BY date\n\t\t\tORDER BY date ASC';
+		final rows = await db.rawQuery(sql, args);
+		final byDate = {for (final r in rows) (r['date'] as String): (r['total'] as int? ?? 0)};
+		final result = <HabitDailyPoint>[];
+		DateTime cursor = DateTime(startDate.year, startDate.month, startDate.day);
+		final DateTime end = DateTime(endDate.year, endDate.month, endDate.day);
+		while (!cursor.isAfter(end)) {
+			final d = cursor.toIso8601String().substring(0, 10);
+			result.add(HabitDailyPoint(date: cursor, points: byDate[d] ?? 0));
+			cursor = cursor.add(const Duration(days: 1));
 		}
 		return result;
 	}
