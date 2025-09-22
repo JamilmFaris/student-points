@@ -37,17 +37,17 @@ class TrackingCubit extends Cubit<TrackingState> {
 		}
 	}
 
-	void increment(int studentId, int habitId) {
+	void increment(int studentId, int habitId, int points) {
 		final updated = _cloneCounts(state.countsByStudentHabit);
 		final studentMap = updated.putIfAbsent(studentId, () => {});
-		studentMap[habitId] = (studentMap[habitId] ?? 0) + 1;
+		studentMap[habitId] = (studentMap[habitId] ?? 0) + points;
 		emit(state.copyWith(countsByStudentHabit: updated));
 	}
 
-	void decrement(int studentId, int habitId) {
+	void decrement(int studentId, int habitId, int points) {
 		final updated = _cloneCounts(state.countsByStudentHabit);
 		final studentMap = updated.putIfAbsent(studentId, () => {});
-		studentMap[habitId] = (studentMap[habitId] ?? 0) - 1;
+		studentMap[habitId] = (studentMap[habitId] ?? 0) - points;
 		emit(state.copyWith(countsByStudentHabit: updated));
 	}
 

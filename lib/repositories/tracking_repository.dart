@@ -54,30 +54,23 @@ class TrackingRepository {
 		});
 	}
 
-	Future<void> replaceDayEntries(DateTime date, Map<int, Map<int, int>> counts) async {
+	Future<void> replaceDayEntries(DateTime date, Map<int, Map<int, int>> pointsByStudentHabit) async {
 		final db = await AppDatabase().database;
 		final d = date.toIso8601String().substring(0, 10);
 		await db.transaction((txn) async {
 			await txn.delete('daily_entries', where: 'date = ?', whereArgs: [d]);
-			// Preload habit points into a map to avoid repeated queries
-			final habitRows = await txn.query('habits', columns: ['id', 'points', 'decrease_points']);
-			final habitIdToPoints = {for (final r in habitRows) r['id'] as int: r['points'] as int};
-			final habitIdToDecreasePoints = {for (final r in habitRows) r['id'] as int: (r['decrease_points'] as int? ?? (r['points'] as int))};
-			for (final entry in counts.entries) {
+			for (final entry in pointsByStudentHabit.entries) {
 				final studentId = entry.key;
 				final habits = entry.value;
 				for (final h in habits.entries) {
 					final habitId = h.key;
-					final count = h.value;
-					if (count == 0) continue;
-					final inc = habitIdToPoints[habitId] ?? 0;
-					final dec = habitIdToDecreasePoints[habitId] ?? inc;
-					final points = count >= 0 ? inc * count : -dec * (-count);
+					final points = h.value;
+					if (points == 0) continue;
 					await txn.insert('daily_entries', {
 						'date': d,
 						'student_id': studentId,
 						'habit_id': habitId,
-						'count': count,
+						'count': points, // Store points as count for compatibility
 						'points_earned': points,
 					});
 				}
@@ -149,14 +142,14 @@ class TrackingRepository {
 	Future<Map<int, Map<int, int>>> getDayBreakdown(DateTime date) async {
 		final db = await AppDatabase().database;
 		final d = date.toIso8601String().substring(0, 10);
-		final rows = await db.query('daily_entries', where: 'date = ?', whereArgs: [d]);
+		final rows = await db.query('daily_entries', columns: ['student_id', 'habit_id', 'points_earned'], where: 'date = ?', whereArgs: [d]);
 		final result = <int, Map<int, int>>{};
 		for (final r in rows) {
 			final studentId = r['student_id'] as int;
 			final habitId = r['habit_id'] as int;
-			final count = r['count'] as int;
+			final points = r['points_earned'] as int? ?? 0;
 			result.putIfAbsent(studentId, () => {});
-			result[studentId]![habitId] = count;
+			result[studentId]![habitId] = points;
 		}
 		return result;
 	}

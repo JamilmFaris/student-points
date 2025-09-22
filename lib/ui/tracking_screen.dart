@@ -61,8 +61,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 
 	double _widthForHabit(Habit h) {
 		if (h.oncePerDay && !h.allowNegative) return _checkboxColumnWidth;
-		if (h.allowNegative) return _plusMinusColumnWidth;
-		return _singleAdjustColumnWidth;
+		return _plusMinusColumnWidth;
 	}
 
 	static const double _rowHeight = 56;
@@ -200,12 +199,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 																	int total = 0;
 																	for (final h in habits) {
 																		final c = counts[h.id] ?? 0;
-																		if (c >= 0) {
-																			total += c * h.points;
-																		} else {
-																			final neg = -c;
-																			total += -(neg * h.decreasePoints);
-																		}
+																		total += c;
 																	}
 																	return Text('$total', style: const TextStyle(fontWeight: FontWeight.w600));
 																}), width: _totalColumnWidth, backgroundColor: scheme.secondaryContainer),
@@ -235,37 +229,26 @@ class _TrackingTableState extends State<_TrackingTable> {
 																								value: c > 0,
 																								onChanged: (v) {
 																									if (v == true && c <= 0) {
-																										context.read<TrackingCubit>().increment(students[i].id!, h.id!);
+																										context.read<TrackingCubit>().emit(tState.copyWith(countsByStudentHabit: Map<int, Map<int, int>>.from(tState.countsByStudentHabit)..putIfAbsent(students[i].id!, () => {})[h.id!] = h.points));
 																									} else if (v == false && c > 0) {
-																										context.read<TrackingCubit>().decrement(students[i].id!, h.id!);
+																										context.read<TrackingCubit>().emit(tState.copyWith(countsByStudentHabit: Map<int, Map<int, int>>.from(tState.countsByStudentHabit)..putIfAbsent(students[i].id!, () => {})[h.id!] = 0));
 																									}
 																								},
 																							),
 																							width: _widthForHabit(h),
-																							backgroundColor: c > 0 ? scheme.primary.withOpacity(0.08) : _zebraColor(i),
+																							backgroundColor: c > 0 ? scheme.primary.withOpacity(0.08) : (c < 0 ? scheme.error.withOpacity(0.07) : _zebraColor(i)),
 																						);
 																					}
-																					int displayedPoints;
-																					if (h.oncePerDay && !h.allowNegative) {
-																						displayedPoints = c > 0 ? h.points : 0;
-																					} else {
-																						if (c >= 0) {
-																							displayedPoints = c * h.points;
-																						} else {
-																							final neg = -c;
-																							displayedPoints = -(neg * h.decreasePoints);
-																						}
-																					}
+																					int displayedPoints = c;
 																					return _cell(
 																						Row(
 																							mainAxisSize: MainAxisSize.min,
 																							children: [
-																								if (h.allowNegative)
-																									IconButton(
-																										icon: const Icon(Icons.remove),
-																										color: scheme.error,
-																										onPressed: () => context.read<TrackingCubit>().decrement(students[i].id!, h.id!),
-																									),
+																								IconButton(
+																									icon: const Icon(Icons.remove),
+																									color: scheme.error,
+																									onPressed: () => context.read<TrackingCubit>().decrement(students[i].id!, h.id!, h.decreasePoints),
+																								),
 																								Text('$displayedPoints', style: const TextStyle(fontWeight: FontWeight.w500)),
 																								IconButton(
 																									icon: const Icon(Icons.add),
@@ -273,8 +256,7 @@ class _TrackingTableState extends State<_TrackingTable> {
 																									onPressed: () {
 																										final counts = tState.countsByStudentHabit[students[i].id] ?? {};
 																										final c = counts[h.id] ?? 0;
-																										if (h.oncePerDay && c >= 1) return;
-																										context.read<TrackingCubit>().increment(students[i].id!, h.id!);
+																										context.read<TrackingCubit>().increment(students[i].id!, h.id!, h.points);
 																									},
 																								),
 																							],
