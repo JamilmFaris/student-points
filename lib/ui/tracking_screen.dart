@@ -53,10 +53,8 @@ class _TrackingTable extends StatefulWidget {
 class _TrackingTableState extends State<_TrackingTable> {
 	static const double _leftColumnWidth = 140;
 	static const double _totalColumnWidth = 55;
-	static const double _habitColumnWidth = 115;
 	// Adaptive widths
 	static const double _checkboxColumnWidth = 64; // once per day, no negative (Checkbox only)
-	static const double _singleAdjustColumnWidth = 75; // + and number
 	static const double _plusMinusColumnWidth = 128; // - number +
 
 	double _widthForHabit(Habit h) {
@@ -223,22 +221,65 @@ class _TrackingTableState extends State<_TrackingTable> {
 																				Builder(builder: (context) {
 																					final counts = tState.countsByStudentHabit[students[i].id] ?? {};
 																					final c = counts[h.id] ?? 0;
-																					if (h.oncePerDay && !h.allowNegative) {
-																						return _cell(
-																							Checkbox(
-																								value: c > 0,
-																								onChanged: (v) {
-																									if (v == true && c <= 0) {
-																										context.read<TrackingCubit>().emit(tState.copyWith(countsByStudentHabit: Map<int, Map<int, int>>.from(tState.countsByStudentHabit)..putIfAbsent(students[i].id!, () => {})[h.id!] = h.points));
-																									} else if (v == false && c > 0) {
-																										context.read<TrackingCubit>().emit(tState.copyWith(countsByStudentHabit: Map<int, Map<int, int>>.from(tState.countsByStudentHabit)..putIfAbsent(students[i].id!, () => {})[h.id!] = 0));
-																									}
-																								},
-																							),
-																							width: _widthForHabit(h),
-																							backgroundColor: c > 0 ? scheme.primary.withOpacity(0.08) : (c < 0 ? scheme.error.withOpacity(0.07) : _zebraColor(i)),
-																						);
+																					
+																					// Handle once per day habits (both with and without negative values)
+																					if (h.oncePerDay) {
+																						if (!h.allowNegative) {
+																							// Simple checkbox for once per day without negative
+																							return _cell(
+																								Checkbox(
+																									value: c > 0,
+																									onChanged: (v) {
+																										if (v == true && c <= 0) {
+																											context.read<TrackingCubit>().setHabitValue(students[i].id!, h.id!, h.points);
+																										} else if (v == false && c > 0) {
+																											context.read<TrackingCubit>().setHabitValue(students[i].id!, h.id!, 0);
+																										}
+																									},
+																								),
+																								width: _widthForHabit(h),
+																								backgroundColor: c > 0 ? scheme.primary.withOpacity(0.08) : (c < 0 ? scheme.error.withOpacity(0.07) : _zebraColor(i)),
+																							);
+																						} else {
+																							// Once per day with negative: cycle through 0 → +points → -points → 0
+																							return _cell(
+																								Row(
+																									mainAxisSize: MainAxisSize.min,
+																									children: [
+																										IconButton(
+																											icon: const Icon(Icons.remove),
+																											color: scheme.error,
+																										onPressed: () {
+																											int newVal = c - h.decreasePoints;
+																											if (newVal < -h.decreasePoints) newVal = -h.decreasePoints;
+																											if (newVal > h.points) newVal = h.points;
+																											context.read<TrackingCubit>().setHabitValue(students[i].id!, h.id!, newVal);
+																										},
+																										),
+																										Text('$c', style: const TextStyle(fontWeight: FontWeight.w500)),
+																										IconButton(
+																											icon: const Icon(Icons.add),
+																											color: scheme.primary,
+																										onPressed: () {
+																											int newVal = c + h.points;
+																											if (newVal > h.points) newVal = h.points;
+																											if (newVal < -h.decreasePoints) newVal = -h.decreasePoints;
+																											context.read<TrackingCubit>().setHabitValue(students[i].id!, h.id!, newVal);
+																										},
+																										),
+																									],
+																								),
+																								width: _widthForHabit(h),
+																								backgroundColor: (() {
+																									if (c > 0) return scheme.primary.withOpacity(0.08);
+																									if (c < 0) return scheme.error.withOpacity(0.07);
+																									return _zebraColor(i);
+																								})(),
+																							);
+																						}
 																					}
+																					
+																					// Handle multiple times per day habits (normal increment/decrement)
 																					int displayedPoints = c;
 																					return _cell(
 																						Row(
@@ -253,11 +294,9 @@ class _TrackingTableState extends State<_TrackingTable> {
 																								IconButton(
 																									icon: const Icon(Icons.add),
 																									color: scheme.primary,
-																									onPressed: () {
-																										final counts = tState.countsByStudentHabit[students[i].id] ?? {};
-																										final c = counts[h.id] ?? 0;
-																										context.read<TrackingCubit>().increment(students[i].id!, h.id!, h.points);
-																									},
+																								onPressed: () {
+																									context.read<TrackingCubit>().increment(students[i].id!, h.id!, h.points);
+																								},
 																								),
 																							],
 																						),

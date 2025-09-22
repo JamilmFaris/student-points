@@ -56,6 +56,13 @@ class TrackingCubit extends Cubit<TrackingState> {
 		await _repo.replaceDayEntries(state.date, state.countsByStudentHabit);
 	}
 
+	void setHabitValue(int studentId, int habitId, int value) {
+		final updated = _cloneCounts(state.countsByStudentHabit);
+		final studentMap = updated.putIfAbsent(studentId, () => {});
+		studentMap[habitId] = value;
+		emit(state.copyWith(countsByStudentHabit: updated));
+	}
+
 	Map<int, Map<int, int>> _cloneCounts(Map<int, Map<int, int>> src) {
 		final copy = <int, Map<int, int>>{};
 		src.forEach((studentId, habits) {
