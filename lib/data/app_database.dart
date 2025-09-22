@@ -21,7 +21,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 6,
+			version: 7,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -44,7 +44,8 @@ class AppDatabase {
 						points INTEGER NOT NULL,
 						decrease_points INTEGER NOT NULL DEFAULT 0,
 						allow_negative INTEGER NOT NULL DEFAULT 0,
-						once_per_day INTEGER NOT NULL DEFAULT 0
+						once_per_day INTEGER NOT NULL DEFAULT 0,
+						sort_order INTEGER NOT NULL DEFAULT 0
 					);
 				''');
 				await db.execute('''
@@ -84,10 +85,17 @@ class AppDatabase {
 				if (oldVersion < 6) {
 					final colsHabits = await db.rawQuery('PRAGMA table_info(habits)');
 					final names = colsHabits.map((e) => e['name'] as String).toSet();
-					if (!names.contains('decrease_points')) {
-						await db.execute('ALTER TABLE habits ADD COLUMN decrease_points INTEGER');
-					}
-					await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
+				if (!names.contains('decrease_points')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN decrease_points INTEGER');
+				}
+				await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
+			}
+			if (oldVersion < 7) {
+				final colsHabits = await db.rawQuery('PRAGMA table_info(habits)');
+				final names = colsHabits.map((e) => e['name'] as String).toSet();
+				if (!names.contains('sort_order')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+				}
 				}
 				// Ensure new student columns exist on upgrade
 				final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
@@ -113,6 +121,9 @@ class AppDatabase {
 				if (!names.contains('decrease_points')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN decrease_points INTEGER');
 					await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
+				}
+				if (!names.contains('sort_order')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
 				}
 				final colsStudents = await db.rawQuery('PRAGMA table_info(students)');
 				final sNames = colsStudents.map((e) => e['name'] as String).toSet();

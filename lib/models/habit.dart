@@ -5,11 +5,12 @@ class Habit {
 	final int decreasePoints;
 	final bool allowNegative;
 	final bool oncePerDay;
+	final int sortOrder;
 
-	Habit({this.id, required this.name, required this.points, int? decreasePoints, this.allowNegative = false, this.oncePerDay = false})
+	Habit({this.id, required this.name, required this.points, int? decreasePoints, this.allowNegative = false, this.oncePerDay = false, this.sortOrder = 0})
 		: decreasePoints = decreasePoints ?? points;
 
-	Habit copyWith({int? id, String? name, int? points, int? decreasePoints, bool? allowNegative, bool? oncePerDay}) {
+	Habit copyWith({int? id, String? name, int? points, int? decreasePoints, bool? allowNegative, bool? oncePerDay, int? sortOrder}) {
 		return Habit(
 			id: id ?? this.id,
 			name: name ?? this.name,
@@ -17,6 +18,7 @@ class Habit {
 			decreasePoints: decreasePoints ?? this.decreasePoints,
 			allowNegative: allowNegative ?? this.allowNegative,
 			oncePerDay: oncePerDay ?? this.oncePerDay,
+			sortOrder: sortOrder ?? this.sortOrder,
 		);
 	}
 
@@ -31,6 +33,7 @@ class Habit {
 			decreasePoints: dp,
 			allowNegative: (map['allow_negative'] as int?) == null ? false : (map['allow_negative'] as int) != 0,
 			oncePerDay: (map['once_per_day'] as int?) == null ? false : (map['once_per_day'] as int) != 0,
+			sortOrder: (map['sort_order'] as int?) ?? 0,
 		);
 	}
 
@@ -42,6 +45,7 @@ class Habit {
 			'decrease_points': decreasePoints,
 			'allow_negative': allowNegative ? 1 : 0,
 			'once_per_day': oncePerDay ? 1 : 0,
+			'sort_order': sortOrder,
 		};
 	}
 }

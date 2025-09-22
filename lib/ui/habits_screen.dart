@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 
 import '../bloc/habits_cubit.dart';
+import '../models/habit.dart';
 import '../repositories/habit_repository.dart';
 
 class HabitsScreen extends StatelessWidget {
@@ -19,14 +20,25 @@ class HabitsScreen extends StatelessWidget {
 					body: BlocBuilder<HabitsCubit, HabitsState>(
 						builder: (context, state) {
 							if (state.loading) return const Center(child: CircularProgressIndicator());
-							return ListView.builder(
+							return ReorderableListView.builder(
                 padding: const EdgeInsets.only(bottom: 96),
 								itemCount: state.habits.length,
+								onReorder: (oldIndex, newIndex) {
+									final habits = List<Habit>.from(state.habits);
+									if (newIndex > oldIndex) {
+										newIndex -= 1;
+									}
+									final habit = habits.removeAt(oldIndex);
+									habits.insert(newIndex, habit);
+									context.read<HabitsCubit>().reorderHabits(habits);
+								},
 								itemBuilder: (context, index) {
 									final h = state.habits[index];
 									return ListTile(
+										key: ValueKey(h.id),
 										title: Text(h.name),
 										subtitle: Text(h.allowNegative ? 'زيادة: ${h.points} | إنقاص: ${h.decreasePoints}' : 'النقاط: ${h.points}'),
+										leading: const Icon(Icons.drag_handle),
 										trailing: Row(
 											mainAxisSize: MainAxisSize.min,
 											children: [

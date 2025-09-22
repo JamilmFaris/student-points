@@ -35,7 +35,7 @@ class HabitsCubit extends Cubit<HabitsState> {
 	}
 
 	Future<void> addHabit(String name, int points, {int? decreasePoints, bool allowNegative = false, bool oncePerDay = false}) async {
-		await _repo.insert(Habit(name: name, points: points, decreasePoints: decreasePoints ?? points, allowNegative: allowNegative, oncePerDay: oncePerDay));
+		await _repo.insert(Habit(name: name, points: points, decreasePoints: decreasePoints ?? points, allowNegative: allowNegative, oncePerDay: oncePerDay, sortOrder: 0));
 		await load();
 	}
 
@@ -47,6 +47,13 @@ class HabitsCubit extends Cubit<HabitsState> {
 	Future<void> deleteHabit(int id) async {
 		await _repo.delete(id);
 		await load();
+	}
+
+	Future<void> reorderHabits(List<Habit> reorderedHabits) async {
+		// Update the state immediately for responsive UI
+		emit(state.copyWith(habits: reorderedHabits));
+		// Update the database with new sort orders
+		await _repo.updateSortOrders(reorderedHabits);
 	}
 }
 
