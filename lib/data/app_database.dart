@@ -21,7 +21,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 7,
+			version: 9,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -90,12 +90,38 @@ class AppDatabase {
 				}
 				await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
 			}
-			if (oldVersion < 7) {
+				if (oldVersion < 7) {
 				final colsHabits = await db.rawQuery('PRAGMA table_info(habits)');
 				final names = colsHabits.map((e) => e['name'] as String).toSet();
 				if (!names.contains('sort_order')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
 				}
+				}
+				// v8: add Quran memorization table
+				if (oldVersion < 8) {
+					await db.execute('''
+						CREATE TABLE quran_memorization (
+							id INTEGER PRIMARY KEY AUTOINCREMENT,
+							student_id INTEGER NOT NULL,
+							surah_index INTEGER NOT NULL, -- 1..114
+							ayah_from INTEGER NOT NULL,
+							ayah_to INTEGER NOT NULL,
+							created_at TEXT NOT NULL DEFAULT (datetime('now')),
+							FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+						);
+					''');
+					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_student ON quran_memorization(student_id)');
+					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_surah ON quran_memorization(surah_index)');
+				}
+				// v9: add memorized_on (date-only) separate from created_at (insert time)
+				if (oldVersion < 9) {
+					final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
+					final names = cols.map((e) => e['name'] as String).toSet();
+					if (!names.contains('memorized_on')) {
+						await db.execute('ALTER TABLE quran_memorization ADD COLUMN memorized_on TEXT');
+						// Backfill from created_at date part
+						await db.execute("UPDATE quran_memorization SET memorized_on = substr(created_at, 1, 10) WHERE memorized_on IS NULL");
+					}
 				}
 				// Ensure new student columns exist on upgrade
 				final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
@@ -152,6 +178,21 @@ class AppDatabase {
 					if (!sNames.contains('grade')) {
 						await db.execute('ALTER TABLE students ADD COLUMN grade TEXT');
 					}
+					// Ensure quran_memorization table exists (defensive)
+					await db.execute('''
+						CREATE TABLE IF NOT EXISTS quran_memorization (
+							id INTEGER PRIMARY KEY AUTOINCREMENT,
+							student_id INTEGER NOT NULL,
+							surah_index INTEGER NOT NULL,
+							ayah_from INTEGER NOT NULL,
+							ayah_to INTEGER NOT NULL,
+							created_at TEXT NOT NULL DEFAULT (datetime('now')),
+							memorized_on TEXT,
+							FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+						);
+					''');
+					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_student ON quran_memorization(student_id)');
+					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_surah ON quran_memorization(surah_index)');
 			},
 		);
 	}

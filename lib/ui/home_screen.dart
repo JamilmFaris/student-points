@@ -41,6 +41,11 @@ class HomeScreen extends StatelessWidget {
 											icon: Icons.history,
 											onTap: () => Navigator.pushNamed(context, '/logs'),
 										),
+							_ActionCard(
+								label: 'حفظ القرآن',
+								icon: Icons.menu_book,
+								onTap: () => Navigator.pushNamed(context, '/quran'),
+							),
 									],
 								),
 							);
