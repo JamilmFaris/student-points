@@ -171,6 +171,10 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
         if (f == null || t == null) return 'الرجاء إدخال أرقام صحيحة';
         if (f < 1 || t < 1) return 'الأرقام يجب أن تكون 1 أو أكبر';
         if (f > t) return 'بداية المقطع يجب أن تكون قبل النهاية';
+        final maxAyah = maxAyahsOfSurah(surahIndex);
+        if (maxAyah > 0 && (t > maxAyah || f > maxAyah)) {
+            return 'آخر آية في ${surahNameByIndex(surahIndex)} هي ${maxAyah}';
+        }
         return null;
     }
 
