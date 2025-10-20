@@ -21,7 +21,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 9,
+			version: 10,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -107,6 +107,8 @@ class AppDatabase {
 							ayah_from INTEGER NOT NULL,
 							ayah_to INTEGER NOT NULL,
 							created_at TEXT NOT NULL DEFAULT (datetime('now')),
+							memorized_on TEXT,
+							label TEXT,
 							FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
 						);
 					''');
@@ -121,6 +123,14 @@ class AppDatabase {
 						await db.execute('ALTER TABLE quran_memorization ADD COLUMN memorized_on TEXT');
 						// Backfill from created_at date part
 						await db.execute("UPDATE quran_memorization SET memorized_on = substr(created_at, 1, 10) WHERE memorized_on IS NULL");
+					}
+				}
+				// v10: add label column for kind (حفظ/مراجعة/تثبيت)
+				if (oldVersion < 10) {
+					final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
+					final names = cols.map((e) => e['name'] as String).toSet();
+					if (!names.contains('label')) {
+						await db.execute('ALTER TABLE quran_memorization ADD COLUMN label TEXT');
 					}
 				}
 				// Ensure new student columns exist on upgrade
@@ -188,11 +198,21 @@ class AppDatabase {
 							ayah_to INTEGER NOT NULL,
 							created_at TEXT NOT NULL DEFAULT (datetime('now')),
 							memorized_on TEXT,
+							label TEXT,
 							FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
 						);
 					''');
 					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_student ON quran_memorization(student_id)');
 					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_surah ON quran_memorization(surah_index)');
+					// Defensive: ensure columns exist
+					final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
+					final qmNames = cols.map((e) => e['name'] as String).toSet();
+					if (!qmNames.contains('memorized_on')) {
+						await db.execute('ALTER TABLE quran_memorization ADD COLUMN memorized_on TEXT');
+					}
+					if (!qmNames.contains('label')) {
+						await db.execute('ALTER TABLE quran_memorization ADD COLUMN label TEXT');
+					}
 			},
 		);
 	}

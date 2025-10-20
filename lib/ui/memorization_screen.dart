@@ -79,49 +79,58 @@ Future<void> _showHistory(BuildContext context, Student student) async {
                                                 child: Center(child: Text('لا يوجد سجل حفظ لهذا الطالب')),
                                             )
                                         else
-                                            Flexible(
-                                                child: ListView.builder(
-                                                    shrinkWrap: true,
-                                                    itemCount: local.length,
-                                                    itemBuilder: (_, i) {
-                                                        final m = local[i];
-                                                        return Card(
-                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                                            margin: const EdgeInsets.symmetric(vertical: 6),
-                                                            child: ListTile(
-                                                                leading: CircleAvatar(child: Text('${m.surahIndex}')),
-                                                                title: Text(surahNameByIndex(m.surahIndex)),
-                                                                subtitle: Text('التاريخ: ${((m.memorizedOn ?? (m.createdAt.length >= 10 ? m.createdAt.substring(0, 10) : m.createdAt)))} • من الآية ${m.ayahFrom} إلى الآية ${m.ayahTo}'),
-                                                                trailing: IconButton(
-                                                                    tooltip: 'حذف',
-                                                                    icon: const Icon(Icons.delete),
-                                                                    onPressed: () async {
-                                                                        final confirm = await showDialog<bool>(
-                                                                            context: ctx,
-                                                                            builder: (dCtx) => AlertDialog(
-                                                                                title: const Text('تأكيد الحذف'),
-                                                                                content: const Text('هل تريد حذف هذا السجل؟'),
-                                                                                actions: [
-                                                                                    TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('إلغاء')),
-                                                                                    TextButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('حذف')),
-                                                                                ],
-                                                                            ),
-                                                                        );
-                                                                        if (confirm != true) return;
-                                                                        try {
-                                                                            await repo.delete(m.id!);
-                                                                            setState(() => local.removeAt(i));
-                                                                            // ignore: use_build_context_synchronously
-                                                                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('تم الحذف')));
-                                                                        } catch (_) {
-                                                                            // ignore: use_build_context_synchronously
-                                                                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('تعذر الحذف')));
-                                                                        }
-                                                                    },
-                                                                ),
+                                            DefaultTabController(
+                                                length: 3,
+                                                child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                        const TabBar(
+                                                            tabs: [
+                                                                Tab(text: 'حفظ'),
+                                                                Tab(text: 'مراجعة'),
+                                                                Tab(text: 'تثبيت'),
+                                                            ],
+                                                        ),
+                                                        const SizedBox(height: 8),
+                                                        SizedBox(
+                                                            height: 300, // Fixed height for TabBarView
+                                                            child: TabBarView(
+                                                                children: [
+                                                                    _MemTabList(
+                                                                        items: local.where((m) => (m.label ?? 'حفظ') == 'حفظ').toList(),
+                                                                        repo: repo,
+                                                                        onDeleted: (id) {
+                                                                            setState(() {
+                                                                                final idx = local.indexWhere((x) => x.id == id);
+                                                                                if (idx != -1) local.removeAt(idx);
+                                                                            });
+                                                                        },
+                                                                    ),
+                                                                    _MemTabList(
+                                                                        items: local.where((m) => (m.label ?? 'حفظ') == 'مراجعة').toList(),
+                                                                        repo: repo,
+                                                                        onDeleted: (id) {
+                                                                            setState(() {
+                                                                                final idx = local.indexWhere((x) => x.id == id);
+                                                                                if (idx != -1) local.removeAt(idx);
+                                                                            });
+                                                                        },
+                                                                    ),
+                                                                    _MemTabList(
+                                                                        items: local.where((m) => (m.label ?? 'حفظ') == 'تثبيت').toList(),
+                                                                        repo: repo,
+                                                                        onDeleted: (id) {
+                                                                            setState(() {
+                                                                                final idx = local.indexWhere((x) => x.id == id);
+                                                                                if (idx != -1) local.removeAt(idx);
+                                                                            });
+                                                                        },
+                                                                    ),
+                                                                ],
                                                             ),
-                                                        );
-                                                    },
+                                                        ),
+                                                    ],
                                                 ),
                                             ),
                                     ],
@@ -147,6 +156,7 @@ Future<void> _addMemorizedSection(BuildContext context, Student student) async {
         ayahTo: result.ayahTo,
         createdAt: DateTime.now().toIso8601String(),
         memorizedOn: toIsoDate(result.date),
+        label: result.label,
     ));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الحفظ')));
 }
@@ -156,7 +166,8 @@ class _MemResult {
     final int ayahFrom;
     final int ayahTo;
     final DateTime date;
-    _MemResult(this.surahIndex, this.ayahFrom, this.ayahTo, this.date);
+    final String? label; // حفظ / مراجعة / تثبيت
+    _MemResult(this.surahIndex, this.ayahFrom, this.ayahTo, this.date, this.label);
 }
 
 Future<_MemResult?> _promptMemorization(BuildContext context) async {
@@ -164,6 +175,7 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
     final fromController = TextEditingController();
     final toController = TextEditingController();
     DateTime date = DateTime.now();
+    String? label;
 
     String? _validate() {
         final f = int.tryParse(fromController.text.trim());
@@ -245,6 +257,30 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             textDirection: TextDirection.ltr,
                                             textAlign: TextAlign.left,
                                         ),
+                                        const SizedBox(height: 8),
+                                        InputDecorator(
+                                            decoration: const InputDecoration(labelText: 'النوع'),
+                                            child: Wrap(
+                                                spacing: 8,
+                                                children: [
+                                                    ChoiceChip(
+                                                        label: const Text('حفظ'),
+                                                        selected: (label ?? 'حفظ') == 'حفظ',
+                                                        onSelected: (_) => setState(() => label = 'حفظ'),
+                                                    ),
+                                                    ChoiceChip(
+                                                        label: const Text('مراجعة'),
+                                                        selected: label == 'مراجعة',
+                                                        onSelected: (_) => setState(() => label = 'مراجعة'),
+                                                    ),
+                                                    ChoiceChip(
+                                                        label: const Text('تثبيت'),
+                                                        selected: label == 'تثبيت',
+                                                        onSelected: (_) => setState(() => label = 'تثبيت'),
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
                                     ],
                                 ),
                             ),
@@ -261,7 +297,8 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             surahIndex,
                                             int.parse(fromController.text.trim()),
                                             int.parse(toController.text.trim()),
-        							DateTime(date.year, date.month, date.day),
+									DateTime(date.year, date.month, date.day),
+                                            label ?? 'حفظ',
                                         ));
                                     },
                                     child: const Text('حفظ'),
@@ -347,6 +384,65 @@ Future<int?> _pickSurahIndex(BuildContext context, int initial) async {
         },
     );
     return result ?? initial;
+}
+
+
+class _MemTabList extends StatelessWidget {
+    final List<MemorizedSection> items;
+    final MemorizationRepository repo;
+    final void Function(int id) onDeleted;
+    const _MemTabList({required this.items, required this.repo, required this.onDeleted});
+
+    @override
+    Widget build(BuildContext context) {
+        if (items.isEmpty) {
+            return const Center(child: Text('لا توجد سجلات'));
+        }
+        return ListView.builder(
+            shrinkWrap: true,
+            itemCount: items.length,
+            itemBuilder: (_, i) {
+                final m = items[i];
+                final dateText = (m.memorizedOn ?? (m.createdAt.length >= 10 ? m.createdAt.substring(0, 10) : m.createdAt));
+                return Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.symmetric(vertical: 6),
+                    child: ListTile(
+                        leading: CircleAvatar(child: Text('${m.surahIndex}')),
+                        title: Text(surahNameByIndex(m.surahIndex)),
+                        subtitle: Text('من الآية ${m.ayahFrom} إلى الآية ${m.ayahTo} • التاريخ: $dateText'),
+                        trailing: IconButton(
+                            tooltip: 'حذف',
+                            icon: const Icon(Icons.delete),
+                            onPressed: () async {
+                                final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dCtx) => AlertDialog(
+                                        title: const Text('تأكيد الحذف'),
+                                        content: const Text('هل تريد حذف هذا السجل؟'),
+                                        actions: [
+                                            TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('إلغاء')),
+                                            TextButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('حذف')),
+                                        ],
+                                    ),
+                                );
+                                if (confirm != true) return;
+                                try {
+                                    await repo.delete(m.id!);
+                                    onDeleted(m.id!);
+                                    // ignore: use_build_context_synchronously
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف')));
+                                } catch (_) {
+                                    // ignore: use_build_context_synchronously
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر الحذف')));
+                                }
+                            },
+                        ),
+                    ),
+                );
+            },
+        );
+    }
 }
 
 

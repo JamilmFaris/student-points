@@ -4,12 +4,18 @@ import '../data/app_database.dart';
 import '../models/memorized_section.dart';
 
 class MemorizationRepository {
-    Future<List<MemorizedSection>> listForStudent(int studentId) async {
+    Future<List<MemorizedSection>> listForStudent(int studentId, {String? label}) async {
         final db = await AppDatabase().database;
+        final where = StringBuffer('student_id = ?');
+        final whereArgs = <Object?>[studentId];
+        if (label != null && label.trim().isNotEmpty) {
+            where.write(' AND label = ?');
+            whereArgs.add(label.trim());
+        }
         final rows = await db.query(
             'quran_memorization',
-            where: 'student_id = ?',
-            whereArgs: [studentId],
+            where: where.toString(),
+            whereArgs: whereArgs,
             orderBy: 'created_at DESC, id DESC',
         );
         return rows.map((e) => MemorizedSection.fromMap(e)).toList();
@@ -22,6 +28,9 @@ class MemorizationRepository {
         map['created_at'] ??= DateTime.now().toIso8601String();
         // Backfill memorized_on from created_at date part if not provided
         map['memorized_on'] ??= (map['created_at'] as String).substring(0, 10);
+        // Ensure label is trimmed or null
+        final label = (map['label'] as String?)?.trim();
+        map['label'] = (label == null || label.isEmpty) ? null : label;
         return db.insert('quran_memorization', map, conflictAlgorithm: ConflictAlgorithm.abort);
     }
 

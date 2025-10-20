@@ -9,8 +9,10 @@ class MemorizedSection {
     final int ayahTo;
     final String createdAt; // ISO datetime
     final String? memorizedOn; // ISO yyyy-MM-dd
+    /// Kind label: حفظ / مراجعة / تثبيت
+    final String? label;
 
-    MemorizedSection({this.id, required this.studentId, required this.surahIndex, required this.ayahFrom, required this.ayahTo, required this.createdAt, this.memorizedOn});
+    MemorizedSection({this.id, required this.studentId, required this.surahIndex, required this.ayahFrom, required this.ayahTo, required this.createdAt, this.memorizedOn, this.label});
 
     factory MemorizedSection.fromMap(Map<String, dynamic> map) {
         return MemorizedSection(
@@ -21,6 +23,7 @@ class MemorizedSection {
             ayahTo: map['ayah_to'] as int,
             createdAt: map['created_at'] as String,
             memorizedOn: map['memorized_on'] as String?,
+            label: map['label'] as String?,
         );
     }
 
@@ -33,6 +36,7 @@ class MemorizedSection {
             'ayah_to': ayahTo,
             'created_at': createdAt,
             'memorized_on': memorizedOn,
+            'label': label,
         };
     }
 }
