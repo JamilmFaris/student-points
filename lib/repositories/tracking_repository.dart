@@ -186,13 +186,16 @@ class TrackingRepository {
 		sql += '\n\t\t\tGROUP BY date\n\t\t\tORDER BY date ASC';
 		final rows = await db.rawQuery(sql, args);
 		final byDate = {for (final r in rows) (r['date'] as String): (r['total'] as int? ?? 0)};
+		// Build series only for days that have any entries (any habit, any student)
+		final activeRows = await db.rawQuery(
+			'SELECT DISTINCT date FROM daily_entries WHERE date BETWEEN ? AND ? ORDER BY date ASC',
+			[s, e],
+		);
 		final result = <HabitDailyPoint>[];
-		DateTime cursor = DateTime(startDate.year, startDate.month, startDate.day);
-		final DateTime end = DateTime(endDate.year, endDate.month, endDate.day);
-		while (!cursor.isAfter(end)) {
-			final d = cursor.toIso8601String().substring(0, 10);
-			result.add(HabitDailyPoint(date: cursor, points: byDate[d] ?? 0));
-			cursor = cursor.add(const Duration(days: 1));
+		for (final r in activeRows) {
+			final dStr = r['date'] as String;
+			final d = DateTime.parse(dStr);
+			result.add(HabitDailyPoint(date: d, points: byDate[dStr] ?? 0));
 		}
 		return result;
 	}
