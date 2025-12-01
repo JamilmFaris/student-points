@@ -8,6 +8,8 @@ import '../repositories/memorization_repository.dart';
 import '../models/memorized_section.dart';
 import '../data/surah_names.dart';
 
+import 'widgets/app_drawer.dart';
+
 class MemorizationScreen extends StatelessWidget {
 	const MemorizationScreen({super.key});
 
@@ -19,6 +21,7 @@ class MemorizationScreen extends StatelessWidget {
                 create: (_) => StudentsCubit(StudentRepository()),
                 child: Scaffold(
                     appBar: AppBar(title: const Text('حفظ القرآن')),
+                    drawer: const AppDrawer(),
                     body: BlocBuilder<StudentsCubit, StudentsState>(
                         builder: (context, state) {
                             if (state.loading) return const Center(child: CircularProgressIndicator());

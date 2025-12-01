@@ -9,6 +9,8 @@ import '../repositories/habit_repository.dart';
 import '../repositories/student_repository.dart';
 import '../repositories/tracking_repository.dart';
 
+import 'widgets/app_drawer.dart';
+
 class LogsScreen extends StatelessWidget {
 	const LogsScreen({super.key});
 
@@ -32,6 +34,7 @@ class LogsScreen extends StatelessWidget {
 								Tab(text: 'نطاق'),
 							]),
 						),
+						drawer: const AppDrawer(),
 						body: const TabBarView(children: [
 							_DailyTab(),
 							_MonthlyTab(),

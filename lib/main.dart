@@ -5,6 +5,7 @@ import 'ui/home_screen.dart';
 import 'ui/habits_screen.dart';
 import 'ui/logs_screen.dart';
 import 'ui/memorization_screen.dart';
+import 'ui/settings_screen.dart';
 import 'ui/students_screen.dart';
 import 'ui/tracking_screen.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -42,6 +43,7 @@ class MyApp extends StatelessWidget {
         '/tracking': (_) => const TrackingScreen(),
         '/logs': (_) => const LogsScreen(),
         '/quran': (_) => const MemorizationScreen(),
+        '/settings': (_) => const SettingsScreen(),
       },
     );
   }

@@ -6,6 +6,8 @@ import '../bloc/habits_cubit.dart';
 import '../models/habit.dart';
 import '../repositories/habit_repository.dart';
 
+import 'widgets/app_drawer.dart';
+
 class HabitsScreen extends StatelessWidget {
 	const HabitsScreen({super.key});
 
@@ -17,6 +19,7 @@ class HabitsScreen extends StatelessWidget {
 				create: (_) => HabitsCubit(HabitRepository()),
 				child: Scaffold(
 					appBar: AppBar(title: const Text('العادات')),
+					drawer: const AppDrawer(),
 					body: BlocBuilder<HabitsCubit, HabitsState>(
 						builder: (context, state) {
 							if (state.loading) return const Center(child: CircularProgressIndicator());

@@ -16,6 +16,33 @@ class AppDatabase {
 		return _db!;
 	}
 
+	// Returns the absolute path to the SQLite database file.
+	Future<String> get dbPath async {
+		final dbDir = await getDatabasesPath();
+		return p.join(dbDir, 'student_points.db');
+	}
+
+	// Forces a WAL checkpoint so the main db file contains all recent changes.
+	Future<void> checkpoint() async {
+		if (_db != null) {
+			await _db!.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+		}
+	}
+
+	// Closes the current database instance (if any) so files can be replaced.
+	Future<void> close() async {
+		if (_db != null) {
+			await _db!.close();
+			_db = null;
+		}
+	}
+
+	// Reopens the database, triggering migrations if needed.
+	Future<void> reopen() async {
+		await close();
+		await database;
+	}
+
 	Future<Database> _openDatabase() async {
 		final dbDir = await getDatabasesPath();
 		final dbPath = p.join(dbDir, 'student_points.db');

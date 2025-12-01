@@ -10,6 +10,8 @@ import 'widgets/habit_progress_chart.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 
+import 'widgets/app_drawer.dart';
+
 class StudentsScreen extends StatelessWidget {
 	const StudentsScreen({super.key});
 
@@ -19,6 +21,7 @@ class StudentsScreen extends StatelessWidget {
 			textDirection: TextDirection.rtl,
 			child: Scaffold(
 					appBar: AppBar(title: const Text('الطلاب')),
+					drawer: const AppDrawer(),
 					body: BlocBuilder<StudentsCubit, StudentsState>(
 						builder: (context, state) {
 							if (state.loading) return const Center(child: CircularProgressIndicator());

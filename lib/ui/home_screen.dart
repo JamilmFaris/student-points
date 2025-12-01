@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'widgets/app_drawer.dart';
+
 class HomeScreen extends StatelessWidget {
 	const HomeScreen({super.key});
 
@@ -9,6 +11,7 @@ class HomeScreen extends StatelessWidget {
 			textDirection: TextDirection.rtl,
 			child: Scaffold(
 				appBar: AppBar(title: Center(child: const Text('السلام عليكم ورحمة الله'))),
+				drawer: const AppDrawer(),
 				body: SafeArea(
 					child: LayoutBuilder(
 						builder: (context, constraints) {
@@ -46,6 +49,11 @@ class HomeScreen extends StatelessWidget {
 								icon: Icons.menu_book,
 								onTap: () => Navigator.pushNamed(context, '/quran'),
 							),
+										_ActionCard(
+											label: 'الإعدادات',
+											icon: Icons.settings,
+											onTap: () => Navigator.pushNamed(context, '/settings'),
+										),
 									],
 								),
 							);

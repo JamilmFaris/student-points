@@ -9,6 +9,8 @@ import '../repositories/student_repository.dart';
 import '../repositories/tracking_repository.dart';
 import '../models/habit.dart';
 
+import 'widgets/app_drawer.dart';
+
 class TrackingScreen extends StatelessWidget {
 	const TrackingScreen({super.key});
 
@@ -24,6 +26,7 @@ class TrackingScreen extends StatelessWidget {
 				],
 				child: Scaffold(
 					appBar: AppBar(title: const Text('تتبع النقاط لليوم')),
+					drawer: const AppDrawer(),
 					body: SafeArea(top: false, left: false, right: false, bottom: true, child: const _TrackingTable()),
 					floatingActionButton: Builder(
 						builder: (context) {
