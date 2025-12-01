@@ -49,11 +49,6 @@ class HomeScreen extends StatelessWidget {
 								icon: Icons.menu_book,
 								onTap: () => Navigator.pushNamed(context, '/quran'),
 							),
-										_ActionCard(
-											label: 'الإعدادات',
-											icon: Icons.settings,
-											onTap: () => Navigator.pushNamed(context, '/settings'),
-										),
 									],
 								),
 							);

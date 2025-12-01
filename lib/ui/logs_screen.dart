@@ -153,20 +153,54 @@ class _MonthlyTabState extends State<_MonthlyTab> {
 	@override
 	Widget build(BuildContext context) {
 		return Column(children: [
-			Row(children: [
-				IconButton(onPressed: () => setState(() => year--), icon: const Icon(Icons.chevron_right)),
-				Text('السنة: $year'),
-				IconButton(onPressed: () => setState(() => year++), icon: const Icon(Icons.chevron_left)),
-				const SizedBox(width: 12),
-				IconButton(onPressed: () => setState(() => month = month > 1 ? month - 1 : 12), icon: const Icon(Icons.chevron_right)),
-				Text('الشهر: $month'),
-				IconButton(onPressed: () => setState(() => month = month < 12 ? month + 1 : 1), icon: const Icon(Icons.chevron_left)),
-				TextButton(
-					onPressed: () => context.read<LogsCubit>().loadMonthly(year, month),
-					child: const Text('عرض'),
+			Padding(
+				padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+				child: Card(
+					shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+					child: Padding(
+						padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+						child: Wrap(
+							spacing: 12,
+							runSpacing: 8,
+							crossAxisAlignment: WrapCrossAlignment.center,
+							children: [
+								Row(
+									mainAxisSize: MainAxisSize.min,
+									children: [
+										IconButton(onPressed: () => setState(() => year--), icon: const Icon(Icons.chevron_left)),
+										Text('السنة: $year'),
+										IconButton(onPressed: () => setState(() => year++), icon: const Icon(Icons.chevron_right)),
+									],
+								),
+								Row(
+									mainAxisSize: MainAxisSize.min,
+									children: [
+										const Text('الشهر:'),
+										const SizedBox(width: 8),
+										DropdownButton<int>(
+											value: month,
+											items: [
+												for (int m = 1; m <= 12; m++)
+													DropdownMenuItem(
+														value: m,
+														child: Text('$m', textDirection: TextDirection.ltr, textAlign: TextAlign.left),
+													),
+											],
+											onChanged: (v) => setState(() => month = v ?? month),
+										),
+									],
+								),
+								FilledButton.icon(
+									onPressed: () => context.read<LogsCubit>().loadMonthly(year, month),
+									icon: const Icon(Icons.visibility),
+									label: const Text('عرض'),
+								),
+							],
+						),
+					),
 				),
-			]),
-			Expanded(child: BlocBuilder<LogsCubit, LogsState>(builder: (_, s) => _TotalsList(map: s.monthlyTotals))),
+			),
+			Expanded(child: BlocBuilder<LogsCubit, LogsState>(builder: (_, s) => _TotalsList(map: s.monthlyTotals, subtitle: 'إجمالي نقاط الشهر'))),
 		]);
 	}
 }
@@ -282,7 +316,8 @@ class _RangeTabState extends State<_RangeTab> {
 
 class _TotalsList extends StatelessWidget {
 	final Map<int, int> map;
-	const _TotalsList({required this.map});
+	final String subtitle;
+	const _TotalsList({required this.map, this.subtitle = 'إجمالي نقاط اليوم'});
 
 	@override
 	Widget build(BuildContext context) {
@@ -312,7 +347,7 @@ class _TotalsList extends StatelessWidget {
 						child: ListTile(
 							leading: CircleAvatar(child: Text(initial)),
 							title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-							subtitle: const Text('إجمالي نقاط اليوم'),
+							subtitle: Text(subtitle),
 							trailing: Chip(
 								label: Text('${entry.value}'),
 								backgroundColor: _chipColor(entry.value),
