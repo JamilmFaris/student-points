@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../bloc/habits_cubit.dart';
 import '../bloc/students_cubit.dart';
@@ -88,6 +89,10 @@ class _TrackingTableState extends State<_TrackingTable> {
 				_verticalLeftController.jumpTo(_verticalBodyController.offset);
 			}
 		});
+		// Show reminder dialog after first frame
+		WidgetsBinding.instance.addPostFrameCallback((_) {
+			_showReminderIfNeeded(context);
+		});
 	}
 
 	@override
@@ -97,6 +102,53 @@ class _TrackingTableState extends State<_TrackingTable> {
 		_verticalBodyController.dispose();
 		_verticalLeftController.dispose();
 		super.dispose();
+	}
+
+	Future<void> _showReminderIfNeeded(BuildContext context) async {
+		final prefs = await SharedPreferences.getInstance();
+		final reminderPref = prefs.getString('tracking_save_reminder');
+		
+		// If preference is 'dont_show', don't show the reminder
+		if (reminderPref == 'dont_show') return;
+		
+		// Show reminder if preference is 'show_always' or if it doesn't exist (first time)
+		if (reminderPref == null || reminderPref == 'show_always') {
+			if (!context.mounted) return;
+			await _showSaveReminderDialog(context);
+		}
+	}
+
+	Future<void> _showSaveReminderDialog(BuildContext context) async {
+		final prefs = await SharedPreferences.getInstance();
+		await showDialog(
+			context: context,
+			barrierDismissible: false,
+			builder: (ctx) => Directionality(
+				textDirection: TextDirection.rtl,
+				child: AlertDialog(
+					title: const Text('تذكير'),
+					content: const Text('لا تنسَ الضغط على زر "حفظ" بعد الانتهاء من تتبع النقاط لحفظ التعديلات.'),
+					actions: [
+						TextButton(
+							onPressed: () async {
+								await prefs.setString('tracking_save_reminder', 'show_always');
+								if (!ctx.mounted) return;
+								Navigator.pop(ctx);
+							},
+							child: const Text('نعم، فهمت'),
+						),
+						TextButton(
+							onPressed: () async {
+								await prefs.setString('tracking_save_reminder', 'dont_show');
+								if (!ctx.mounted) return;
+								Navigator.pop(ctx);
+							},
+							child: const Text('نعم فهمت ولا تذكرني في المرة القادمة'),
+						),
+					],
+				),
+			),
+		);
 	}
 
 	Color _zebraColor(int rowIndex) {

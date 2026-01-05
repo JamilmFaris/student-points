@@ -46,6 +46,7 @@ dependencies:
   flutter_contacts: ^1.1.7
   file_picker: ^8.0.3
   flutter_file_dialog: ^3.0.2
+  shared_preferences: ^2.3.3
 
 dev_dependencies:
   flutter_test:
