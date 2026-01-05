@@ -133,7 +133,7 @@ const List<int> kSurahAyahCounts = [
   14, 11, 11, 18, 12, 12, 30, 52, 52, 44,
   28, 28, 20, 56, 40, 31, 50, 40, 46, 42,
   29, 19, 36, 25, 22, 17, 19, 26, 30, 20,
-  15, 21, 11, 8, 8, 19, 5, 8, 11, 11,
+  15, 21, 11, 8, 8, 19, 5, 8, 8, 11, 11,
   8, 3, 9, 5, 4, 7, 3, 6, 3, 5,
   4, 5, 6,
 ];
@@ -141,8 +141,6 @@ const List<int> kSurahAyahCounts = [
 int maxAyahsOfSurah(int index1Based) {
   if (index1Based < 1 || index1Based > 114) return 0;
   final count = kSurahAyahCounts[index1Based - 1];
-  // Exclude Basmalah only for Al-Fatiha where it is counted as an ayah
-  if (index1Based == 1 && count > 0) return count - 1;
   return count;
 }
 

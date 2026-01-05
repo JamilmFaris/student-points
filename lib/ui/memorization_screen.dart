@@ -261,6 +261,20 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             textAlign: TextAlign.left,
                                         ),
                                         const SizedBox(height: 8),
+                                        OutlinedButton.icon(
+                                            onPressed: () {
+                                                final maxAyah = maxAyahsOfSurah(surahIndex);
+                                                if (maxAyah > 0) {
+                                                    setState(() {
+                                                        fromController.text = '1';
+                                                        toController.text = maxAyah.toString();
+                                                    });
+                                                }
+                                            },
+                                            icon: const Icon(Icons.auto_fix_high),
+                                            label: const Text('السورة كاملة'),
+                                        ),
+                                        const SizedBox(height: 8),
                                         InputDecorator(
                                             decoration: const InputDecoration(labelText: 'النوع'),
                                             child: Wrap(

@@ -135,7 +135,25 @@ class StudentsScreen extends StatelessWidget {
 												),
 												IconButton(
 													icon: const Icon(Icons.delete),
-													onPressed: () => context.read<StudentsCubit>().deleteStudent(s.id!),
+													onPressed: () async {
+														final confirm = await showDialog<bool>(
+															context: context,
+															builder: (dCtx) => Directionality(
+																textDirection: TextDirection.rtl,
+																child: AlertDialog(
+																	title: const Text('تأكيد الحذف'),
+																	content: Text('هل تريد حذف الطالب "${s.name}"؟'),
+																	actions: [
+																		TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('إلغاء')),
+																		TextButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('حذف')),
+																	],
+																),
+															),
+														);
+														if (confirm == true) {
+															context.read<StudentsCubit>().deleteStudent(s.id!);
+														}
+													},
 												),
 											],
 										),
