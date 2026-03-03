@@ -45,23 +45,23 @@ class BackupService {
 	}
 
 	static Future<void> importDatabase() async {
-		// Unfiltered file picker: let the user choose any file
+		// Use withData: true to avoid Android content-URI path issues (File() can't read content://)
 		final picked = await FilePicker.platform.pickFiles(
 			type: FileType.any,
 			allowMultiple: false,
-			withData: false,
+			withData: true,
 			lockParentWindow: true,
 		);
-		final path = picked?.files.single.path;
-		if (path == null) return;
+		final bytes = picked?.files.single.bytes;
+		if (bytes == null) return;
 
 		final appDb = AppDatabase();
 		// Close DB so we can replace it safely
 		await appDb.close();
 
 		final destPath = await appDb.dbPath;
-		// Replace DB file
-		await File(path).copy(destPath);
+		// Write bytes directly (avoids path/URI issues on Android 10+)
+		await File(destPath).writeAsBytes(bytes, flush: true);
 
 		// Clean up WAL/SHM from prior runs if any
 		final wal = File('$destPath-wal');

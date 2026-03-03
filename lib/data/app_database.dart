@@ -89,88 +89,105 @@ class AppDatabase {
 					);
 				''');
 			},
-				onUpgrade: (db, oldVersion, newVersion) async {
-				if (oldVersion < 2) {
+			onUpgrade: (db, oldVersion, newVersion) async {
+			// All ALTER TABLE calls are guarded with PRAGMA table_info checks so that
+			// restoring an older backup that already has some columns doesn't crash.
+			if (oldVersion < 2) {
+				final colsDe = await db.rawQuery('PRAGMA table_info(daily_entries)');
+				final deNames = colsDe.map((e) => e['name'] as String).toSet();
+				if (!deNames.contains('points_earned')) {
 					await db.execute('ALTER TABLE daily_entries ADD COLUMN points_earned INTEGER');
-					await db.execute('''
-						UPDATE daily_entries
-						SET points_earned = (
-							SELECT points FROM habits WHERE habits.id = daily_entries.habit_id
-						) * count
-						WHERE points_earned IS NULL;
-					''');
 				}
-				if (oldVersion < 3) {
+				await db.execute('''
+					UPDATE daily_entries
+					SET points_earned = (
+						SELECT points FROM habits WHERE habits.id = daily_entries.habit_id
+					) * count
+					WHERE points_earned IS NULL;
+				''');
+			}
+			if (oldVersion < 3) {
+				final colsH = await db.rawQuery('PRAGMA table_info(habits)');
+				final hNames = colsH.map((e) => e['name'] as String).toSet();
+				if (!hNames.contains('allow_negative')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN allow_negative INTEGER NOT NULL DEFAULT 0');
 				}
-				if (oldVersion < 4) {
+			}
+			if (oldVersion < 4) {
+				final colsH = await db.rawQuery('PRAGMA table_info(habits)');
+				final hNames = colsH.map((e) => e['name'] as String).toSet();
+				if (!hNames.contains('once_per_day')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN once_per_day INTEGER NOT NULL DEFAULT 0');
 				}
-				if (oldVersion < 5) {
+			}
+			if (oldVersion < 5) {
+				final colsS = await db.rawQuery('PRAGMA table_info(students)');
+				final sNames = colsS.map((e) => e['name'] as String).toSet();
+				if (!sNames.contains('sort_order')) {
 					await db.execute('ALTER TABLE students ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
 				}
-				if (oldVersion < 6) {
-					final colsHabits = await db.rawQuery('PRAGMA table_info(habits)');
-					final names = colsHabits.map((e) => e['name'] as String).toSet();
-				if (!names.contains('decrease_points')) {
+			}
+			if (oldVersion < 6) {
+				final colsH = await db.rawQuery('PRAGMA table_info(habits)');
+				final hNames = colsH.map((e) => e['name'] as String).toSet();
+				if (!hNames.contains('decrease_points')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN decrease_points INTEGER');
 				}
 				await db.execute('UPDATE habits SET decrease_points = points WHERE decrease_points IS NULL');
 			}
-				if (oldVersion < 7) {
-				final colsHabits = await db.rawQuery('PRAGMA table_info(habits)');
-				final names = colsHabits.map((e) => e['name'] as String).toSet();
-				if (!names.contains('sort_order')) {
+			if (oldVersion < 7) {
+				final colsH = await db.rawQuery('PRAGMA table_info(habits)');
+				final hNames = colsH.map((e) => e['name'] as String).toSet();
+				if (!hNames.contains('sort_order')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
 				}
+			}
+			// v8: add Quran memorization table
+			if (oldVersion < 8) {
+				await db.execute('''
+					CREATE TABLE IF NOT EXISTS quran_memorization (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						student_id INTEGER NOT NULL,
+						surah_index INTEGER NOT NULL,
+						ayah_from INTEGER NOT NULL,
+						ayah_to INTEGER NOT NULL,
+						created_at TEXT NOT NULL DEFAULT (datetime('now')),
+						memorized_on TEXT,
+						label TEXT,
+						FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_student ON quran_memorization(student_id)');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_surah ON quran_memorization(surah_index)');
+			}
+			// v9: add memorized_on (date-only) separate from created_at (insert time)
+			if (oldVersion < 9) {
+				final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
+				final qmNames = cols.map((e) => e['name'] as String).toSet();
+				if (!qmNames.contains('memorized_on')) {
+					await db.execute('ALTER TABLE quran_memorization ADD COLUMN memorized_on TEXT');
+					await db.execute("UPDATE quran_memorization SET memorized_on = substr(created_at, 1, 10) WHERE memorized_on IS NULL");
 				}
-				// v8: add Quran memorization table
-				if (oldVersion < 8) {
-					await db.execute('''
-						CREATE TABLE quran_memorization (
-							id INTEGER PRIMARY KEY AUTOINCREMENT,
-							student_id INTEGER NOT NULL,
-							surah_index INTEGER NOT NULL, -- 1..114
-							ayah_from INTEGER NOT NULL,
-							ayah_to INTEGER NOT NULL,
-							created_at TEXT NOT NULL DEFAULT (datetime('now')),
-							memorized_on TEXT,
-							label TEXT,
-							FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
-						);
-					''');
-					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_student ON quran_memorization(student_id)');
-					await db.execute('CREATE INDEX IF NOT EXISTS idx_qm_surah ON quran_memorization(surah_index)');
+			}
+			// v10: add label column for kind (حفظ/مراجعة/تثبيت)
+			if (oldVersion < 10) {
+				final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
+				final qmNames = cols.map((e) => e['name'] as String).toSet();
+				if (!qmNames.contains('label')) {
+					await db.execute('ALTER TABLE quran_memorization ADD COLUMN label TEXT');
 				}
-				// v9: add memorized_on (date-only) separate from created_at (insert time)
-				if (oldVersion < 9) {
-					final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
-					final names = cols.map((e) => e['name'] as String).toSet();
-					if (!names.contains('memorized_on')) {
-						await db.execute('ALTER TABLE quran_memorization ADD COLUMN memorized_on TEXT');
-						// Backfill from created_at date part
-						await db.execute("UPDATE quran_memorization SET memorized_on = substr(created_at, 1, 10) WHERE memorized_on IS NULL");
-					}
-				}
-				// v10: add label column for kind (حفظ/مراجعة/تثبيت)
-				if (oldVersion < 10) {
-					final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
-					final names = cols.map((e) => e['name'] as String).toSet();
-					if (!names.contains('label')) {
-						await db.execute('ALTER TABLE quran_memorization ADD COLUMN label TEXT');
-					}
-				}
-				// Ensure new student columns exist on upgrade
-				final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
-				final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
-				if (!sNamesU.contains('date_of_birth')) await db.execute('ALTER TABLE students ADD COLUMN date_of_birth TEXT');
-				if (!sNamesU.contains('school_name')) await db.execute('ALTER TABLE students ADD COLUMN school_name TEXT');
-				if (!sNamesU.contains('father_name')) await db.execute('ALTER TABLE students ADD COLUMN father_name TEXT');
-				if (!sNamesU.contains('mother_name')) await db.execute('ALTER TABLE students ADD COLUMN mother_name TEXT');
-				if (!sNamesU.contains('phone_number')) await db.execute('ALTER TABLE students ADD COLUMN phone_number TEXT');
-				if (!sNamesU.contains('birth_place')) await db.execute('ALTER TABLE students ADD COLUMN birth_place TEXT');
-				if (!sNamesU.contains('grade')) await db.execute('ALTER TABLE students ADD COLUMN grade TEXT');
-			},
+			}
+			// Ensure new student columns exist on upgrade
+			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
+			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
+			if (!sNamesU.contains('date_of_birth')) await db.execute('ALTER TABLE students ADD COLUMN date_of_birth TEXT');
+			if (!sNamesU.contains('school_name')) await db.execute('ALTER TABLE students ADD COLUMN school_name TEXT');
+			if (!sNamesU.contains('father_name')) await db.execute('ALTER TABLE students ADD COLUMN father_name TEXT');
+			if (!sNamesU.contains('mother_name')) await db.execute('ALTER TABLE students ADD COLUMN mother_name TEXT');
+			if (!sNamesU.contains('phone_number')) await db.execute('ALTER TABLE students ADD COLUMN phone_number TEXT');
+			if (!sNamesU.contains('birth_place')) await db.execute('ALTER TABLE students ADD COLUMN birth_place TEXT');
+			if (!sNamesU.contains('grade')) await db.execute('ALTER TABLE students ADD COLUMN grade TEXT');
+		},
 			onOpen: (db) async {
 				// Defensive: ensure columns exist in case prior migration was skipped
 				final colsHabits = await db.rawQuery('PRAGMA table_info(habits)');
