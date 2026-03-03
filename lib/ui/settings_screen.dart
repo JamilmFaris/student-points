@@ -3,8 +3,26 @@ import 'package:flutter/material.dart';
 import '../services/backup_service.dart';
 import 'widgets/app_drawer.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
 	const SettingsScreen({super.key});
+
+	@override
+	State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+	String _backupPath = '';
+
+	@override
+	void initState() {
+		super.initState();
+		_loadBackupPath();
+	}
+
+	Future<void> _loadBackupPath() async {
+		final path = await BackupService.getAutoBackupPath();
+		if (mounted) setState(() => _backupPath = path);
+	}
 
 	@override
 	Widget build(BuildContext context) {
@@ -16,6 +34,58 @@ class SettingsScreen extends StatelessWidget {
 				body: ListView(
 					padding: const EdgeInsets.all(16),
 					children: [
+						Card(
+							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+							child: Padding(
+								padding: const EdgeInsets.all(16),
+								child: Column(
+									crossAxisAlignment: CrossAxisAlignment.start,
+									children: [
+										const Text('النسخ الاحتياطي التلقائي', style: TextStyle(fontWeight: FontWeight.w700)),
+										const SizedBox(height: 8),
+										const Text('يتم إنشاء نسخة احتياطية تلقائياً كل أسبوع عند فتح التطبيق. تُستبدل النسخة السابقة بالجديدة.'),
+										const SizedBox(height: 12),
+										Text('المسار الحالي:', style: Theme.of(context).textTheme.bodySmall),
+										const SizedBox(height: 4),
+										SelectableText(_backupPath.isEmpty ? 'جاري التحميل...' : _backupPath, style: const TextStyle(fontSize: 12)),
+										const SizedBox(height: 12),
+										Wrap(
+											spacing: 8,
+											runSpacing: 8,
+											children: [
+												OutlinedButton.icon(
+													icon: const Icon(Icons.folder_open),
+													label: const Text('تغيير المجلد'),
+													onPressed: () async {
+														final path = await BackupService.pickBackupDirectory();
+														if (path != null) {
+															await BackupService.setAutoBackupPath(path);
+															if (mounted) {
+																setState(() => _backupPath = path);
+																ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث مسار النسخ الاحتياطي')));
+															}
+														}
+													},
+												),
+												OutlinedButton.icon(
+													icon: const Icon(Icons.restore),
+													label: const Text('المجلد الافتراضي'),
+													onPressed: () async {
+														final path = await BackupService.getDefaultBackupPath();
+														await BackupService.setAutoBackupPath(path);
+														if (mounted) {
+															setState(() => _backupPath = path);
+															ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم استخدام المجلد الافتراضي')));
+														}
+													},
+												),
+											],
+										),
+									],
+								),
+							),
+						),
+						const SizedBox(height: 12),
 						Card(
 							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
 							child: Padding(
@@ -91,6 +161,4 @@ class SettingsScreen extends StatelessWidget {
 		);
 	}
 }
-
-
 
