@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 
 import 'widgets/app_drawer.dart';
+import 'notes_screen.dart';
 
 class StudentsScreen extends StatelessWidget {
 	const StudentsScreen({super.key});
@@ -51,11 +52,13 @@ class StudentsScreen extends StatelessWidget {
 														}
 													},
 												),
+
                                         IconButton(
 											icon: const Icon(Icons.edit),
 											onPressed: () async {
 												final details = await _promptStudentDetails(
 													context,
+													student: s,
 													name: s.name,
 													dateOfBirth: s.dateOfBirth,
 													schoolName: s.schoolName,
@@ -292,11 +295,21 @@ void _showStudentInfo(BuildContext context, Student s) {
                                                 ),
                                             const SizedBox(width: 8),
                                             OutlinedButton.icon(
+                                                icon: const Icon(Icons.note_add_outlined),
+                                                label: const Text('ملاحظات'),
+                                                onPressed: () {
+                                                    Navigator.pop(ctx);
+                                                    Navigator.push(context, MaterialPageRoute(builder: (_) => NotesScreen(student: s)));
+                                                },
+                                            ),
+                                            const SizedBox(width: 8),
+                                            OutlinedButton.icon(
                                                 onPressed: () async {
                                                     Navigator.pop(ctx);
                                                     // Open edit dialog prefilled
                                                     final details = await _promptStudentDetails(
                                                         context,
+                                                        student: s,
                                                         name: s.name,
                                                         dateOfBirth: s.dateOfBirth,
                                                         schoolName: s.schoolName,
@@ -353,7 +366,7 @@ Widget _infoRow(BuildContext context, String label, String? value) {
     );
 }
 
-Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {String? name, String? dateOfBirth, String? schoolName, String? fatherName, String? motherName, String? phoneNumber, String? birthPlace, String? grade}) async {
+Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Student? student, String? name, String? dateOfBirth, String? schoolName, String? fatherName, String? motherName, String? phoneNumber, String? birthPlace, String? grade}) async {
     final nameController = TextEditingController(text: name ?? '');
     final dobController = TextEditingController(text: dateOfBirth ?? '');
     final schoolController = TextEditingController(text: schoolName ?? '');
@@ -389,7 +402,11 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stri
         builder: (context) {
             return AlertDialog(
                 scrollable: true,
-                title: const Text('بيانات الطالب'),
+                title: Column(
+                    children: [
+                        const Text('بيانات الطالب'),
+                    ],
+                ),
                 content: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -435,6 +452,12 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stri
                         ),
                         TextField(controller: birthPlaceController, decoration: const InputDecoration(labelText: 'مكان الولادة'), textDirection: TextDirection.rtl),
                         TextField(controller: gradeController, decoration: const InputDecoration(labelText: 'الصف'), textDirection: TextDirection.rtl),
+                        const SizedBox(height: 12),
+                        if (student != null)
+                            OutlinedButton.icon(icon: const Icon(Icons.note_add_outlined), label: const Text('ملاحظات'), onPressed: () {
+                                Navigator.pop(context);
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => NotesScreen(student: student!)));
+                            },),
                     ],
                 ),
                 actions: [

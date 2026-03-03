@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 10,
+			version: 11,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -177,6 +177,21 @@ class AppDatabase {
 					await db.execute('ALTER TABLE quran_memorization ADD COLUMN label TEXT');
 				}
 			}
+			// v11: add student_notes table (notebook for each student)
+			if (oldVersion < 11) {
+				await db.execute('''
+					CREATE TABLE IF NOT EXISTS student_notes (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						student_id INTEGER NOT NULL,
+						title TEXT NOT NULL,
+						note_text TEXT,
+						created_at TEXT NOT NULL DEFAULT (datetime('now')),
+						updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+						FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_student_notes_student ON student_notes(student_id)');
+			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
 			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
@@ -257,6 +272,19 @@ class AppDatabase {
 					if (!qmNames.contains('label')) {
 						await db.execute('ALTER TABLE quran_memorization ADD COLUMN label TEXT');
 					}
+					// Ensure student_notes table exists (defensive)
+					await db.execute('''
+						CREATE TABLE IF NOT EXISTS student_notes (
+							id INTEGER PRIMARY KEY AUTOINCREMENT,
+							student_id INTEGER NOT NULL,
+							title TEXT NOT NULL,
+							note_text TEXT,
+							created_at TEXT NOT NULL DEFAULT (datetime('now')),
+							updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+							FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+						);
+					''');
+					await db.execute('CREATE INDEX IF NOT EXISTS idx_student_notes_student ON student_notes(student_id)');
 			},
 		);
 	}
