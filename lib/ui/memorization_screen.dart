@@ -7,6 +7,7 @@ import '../repositories/student_repository.dart';
 import '../repositories/memorization_repository.dart';
 import '../models/memorized_section.dart';
 import '../data/surah_names.dart';
+import '../data/juz_data.dart';
 
 import 'widgets/app_drawer.dart';
 
@@ -35,11 +36,21 @@ class MemorizationScreen extends StatelessWidget {
                                     final s = state.students[index];
                                     return ListTile(
                                         title: Text(s.name),
-                                        onTap: () => _showHistory(context, s),
-                                        trailing: IconButton(
-                                            tooltip: 'إضافة حفظ',
-                                            icon: const Icon(Icons.add),
-                                            onPressed: () => _addMemorizedSection(context, s),
+                                        onTap: () => _showSurahsOverview(context, s),
+                                        trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                                IconButton(
+                                                    tooltip: 'سجل الحفظ',
+                                                    icon: const Icon(Icons.history),
+                                                    onPressed: () => _showHistory(context, s),
+                                                ),
+                                                IconButton(
+                                                    tooltip: 'إضافة حفظ',
+                                                    icon: const Icon(Icons.add),
+                                                    onPressed: () => _addMemorizedSection(context, s),
+                                                ),
+                                            ],
                                         ),
                                     );
                                 },
@@ -141,6 +152,123 @@ Future<void> _showHistory(BuildContext context, Student student) async {
                             ),
                         );
                     },
+                ),
+            );
+        },
+    );
+}
+
+/// Merges overlapping/adjacent ayah ranges. E.g. [2-3], [3-5], [8-10] -> [2-5], [8-10].
+List<({int from, int to})> _mergeRanges(List<({int from, int to})> ranges) {
+    if (ranges.isEmpty) return [];
+    final sorted = List<({int from, int to})>.from(ranges)..sort((a, b) => a.from.compareTo(b.from));
+    final merged = <({int from, int to})>[sorted.first];
+    for (int i = 1; i < sorted.length; i++) {
+        final cur = sorted[i];
+        final last = merged.last;
+        if (cur.from <= last.to + 1) {
+            merged[merged.length - 1] = (from: last.from, to: cur.to > last.to ? cur.to : last.to);
+        } else {
+            merged.add(cur);
+        }
+    }
+    return merged;
+}
+
+Future<void> _showSurahsOverview(BuildContext context, Student student) async {
+    final repo = MemorizationRepository();
+    final sections = await repo.listForStudent(student.id!);
+    // Group by surah, merge ranges, then split by juz
+    final Map<int, List<({int from, int to})>> bySurah = {};
+    for (final m in sections) {
+        bySurah.putIfAbsent(m.surahIndex, () => []).add((from: m.ayahFrom, to: m.ayahTo));
+    }
+    final consolidated = <int, List<({int from, int to})>>{};
+    for (final e in bySurah.entries) {
+        consolidated[e.key] = _mergeRanges(e.value);
+    }
+    // Group by juz: juz -> [(surahIndex, ranges)]
+    final Map<int, Map<int, List<({int from, int to})>>> byJuz = {};
+    for (final e in consolidated.entries) {
+        for (final r in e.value) {
+            for (final seg in splitRangeByJuz(e.key, r.from, r.to)) {
+                byJuz.putIfAbsent(seg.juz, () => {});
+                final juzSurahs = byJuz[seg.juz]!;
+                juzSurahs.putIfAbsent(e.key, () => []).add((from: seg.from, to: seg.to));
+            }
+        }
+    }
+    // Merge overlapping ranges within each surah per juz
+    for (final juzSurahs in byJuz.values) {
+        for (final surah in juzSurahs.keys.toList()) {
+            juzSurahs[surah] = _mergeRanges(juzSurahs[surah]!);
+        }
+    }
+    final juzIndices = byJuz.keys.toList()..sort();
+
+    if (!context.mounted) return;
+    showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+            return Directionality(
+                textDirection: TextDirection.rtl,
+                child: SafeArea(
+                    child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                                Row(children: [
+                                    Expanded(
+                                        child: Text(
+                                            'السور المحفوظة - ${student.name}',
+                                            style: Theme.of(ctx).textTheme.titleLarge,
+                                        ),
+                                    ),
+                                    IconButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        icon: const Icon(Icons.close),
+                                    ),
+                                ]),
+                                const SizedBox(height: 8),
+                                if (juzIndices.isEmpty)
+                                    const Padding(
+                                        padding: EdgeInsets.symmetric(vertical: 24),
+                                        child: Center(child: Text('لا توجد سور محفوظة')),
+                                    )
+                                else
+                                    ConstrainedBox(
+                                        constraints: const BoxConstraints(maxHeight: 500),
+                                        child: ListView.builder(
+                                            shrinkWrap: true,
+                                            itemCount: juzIndices.length,
+                                            itemBuilder: (_, i) {
+                                                final juz = juzIndices[i];
+                                                final surahs = byJuz[juz]!;
+                                                final surahKeys = surahs.keys.toList()..sort();
+                                                return ExpansionTile(
+                                                    title: Text('الجزء $juz'),
+                                                    children: surahKeys.map((idx) {
+                                                        final ranges = surahs[idx]!;
+                                                        final rangeStr = ranges
+                                                            .map((r) => r.from == r.to ? '${r.from}' : '${r.from} - ${r.to}')
+                                                            .join(' ، ');
+                                                        return ListTile(
+                                                            dense: true,
+                                                            leading: CircleAvatar(child: Text('$idx')),
+                                                            title: Text(surahNameByIndex(idx)),
+                                                            subtitle: Text('الآيات: $rangeStr'),
+                                                        );
+                                                    }).toList(),
+                                                );
+                                            },
+                                        ),
+                                    ),
+                            ],
+                        ),
+                    ),
                 ),
             );
         },

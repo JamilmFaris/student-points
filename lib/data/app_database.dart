@@ -143,6 +143,8 @@ class AppDatabase {
 				}
 			}
 			// v8: add Quran memorization table
+			// Juz (part) grouping for display is computed from surah_index and ayah_from/ayah_to
+			// at runtime using lib/data/juz_data.dart (no juz column stored).
 			if (oldVersion < 8) {
 				await db.execute('''
 					CREATE TABLE IF NOT EXISTS quran_memorization (
@@ -248,6 +250,7 @@ class AppDatabase {
 						await db.execute('ALTER TABLE students ADD COLUMN grade TEXT');
 					}
 					// Ensure quran_memorization table exists (defensive)
+					// Juz grouping uses lib/data/juz_data.dart; no juz column in schema.
 					await db.execute('''
 						CREATE TABLE IF NOT EXISTS quran_memorization (
 							id INTEGER PRIMARY KEY AUTOINCREMENT,
