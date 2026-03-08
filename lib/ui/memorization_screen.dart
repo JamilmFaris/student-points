@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../bloc/students_cubit.dart';
 import '../models/student.dart';
@@ -11,8 +12,53 @@ import '../data/juz_data.dart';
 
 import 'widgets/app_drawer.dart';
 
-class MemorizationScreen extends StatelessWidget {
+const _kThunderTipKey = 'memorization_thunder_tip_seen';
+
+class MemorizationScreen extends StatefulWidget {
 	const MemorizationScreen({super.key});
+
+	@override
+	State<MemorizationScreen> createState() => _MemorizationScreenState();
+}
+
+class _MemorizationScreenState extends State<MemorizationScreen> {
+	final GlobalKey _thunderIconKey = GlobalKey();
+
+	@override
+	void initState() {
+		super.initState();
+		WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowThunderTip());
+	}
+
+	Future<void> _maybeShowThunderTip() async {
+		final prefs = await SharedPreferences.getInstance();
+		if (prefs.getBool(_kThunderTipKey) == true) return;
+		if (!mounted) return;
+		// Wait for students to load and layout to complete
+		await Future.delayed(const Duration(milliseconds: 600));
+		if (!mounted) return;
+		await prefs.setBool(_kThunderTipKey, true);
+
+		Rect? iconRect;
+		final ctx = _thunderIconKey.currentContext;
+		if (ctx != null) {
+			final box = ctx.findRenderObject() as RenderBox?;
+			if (box != null && box.hasSize) {
+				iconRect = box.localToGlobal(Offset.zero) & box.size;
+			}
+		}
+
+		if (!mounted) return;
+		showDialog<void>(
+			context: context,
+			barrierDismissible: false,
+			barrierColor: Colors.transparent,
+			builder: (ctx) => _ThunderTipOverlay(
+				iconRect: iconRect,
+				onDismiss: () => Navigator.of(ctx).pop(),
+			),
+		);
+	}
 
 	@override
 	Widget build(BuildContext context) {
@@ -34,6 +80,7 @@ class MemorizationScreen extends StatelessWidget {
                                 separatorBuilder: (_, __) => const Divider(height: 0),
                                 itemBuilder: (context, index) {
                                     final s = state.students[index];
+                                    final isFirst = index == 0;
                                     return ListTile(
                                         title: Text(s.name),
                                         onTap: () => _showSurahsOverview(context, s),
@@ -50,6 +97,12 @@ class MemorizationScreen extends StatelessWidget {
                                                     icon: const Icon(Icons.add),
                                                     onPressed: () => _addMemorizedSection(context, s),
                                                 ),
+                                                IconButton(
+                                                    key: isFirst ? _thunderIconKey : null,
+                                                    tooltip: 'إضافة عدة سور أو أجزاء بنقرة واحدة',
+                                                    icon: const Icon(Icons.flash_on),
+                                                    onPressed: () => _addMultipleMemorizedSections(context, s),
+                                                ),
                                             ],
                                         ),
                                     );
@@ -61,6 +114,124 @@ class MemorizationScreen extends StatelessWidget {
             ),
         );
     }
+}
+
+class _ThunderTipOverlay extends StatelessWidget {
+	final Rect? iconRect;
+	final VoidCallback onDismiss;
+
+	const _ThunderTipOverlay({this.iconRect, required this.onDismiss});
+
+	@override
+	Widget build(BuildContext context) {
+		return Directionality(
+			textDirection: TextDirection.rtl,
+			child: Material(
+				color: Colors.transparent,
+				child: Stack(
+					fit: StackFit.expand,
+					children: [
+						CustomPaint(
+							painter: _SpotlightPainter(iconRect),
+						),
+						Center(
+							child: Padding(
+								padding: const EdgeInsets.symmetric(horizontal: 32),
+								child: Column(
+									mainAxisSize: MainAxisSize.min,
+									children: [
+										Icon(Icons.flash_on, size: 64, color: Theme.of(context).colorScheme.primary),
+										const SizedBox(height: 24),
+										Row(
+										  children: [
+										    Text(
+										    	' باستخدام أيقونة البرق',
+										    	textAlign: TextAlign.center,
+										    	style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+										    		fontWeight: FontWeight.bold,
+										    		height: 1.4,color: Colors.white,
+										    	),
+										    ),
+                                            const SizedBox(width: 4),
+                                            Icon(Icons.flash_on, color: Colors.white, size: 32),
+										  ],
+										),
+                                        Text(
+										    	'إضافة عدة سور أو أجزاء بنقرة واحدةيمكنك ',
+										    	textAlign: TextAlign.center,
+										    	style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+										    		fontWeight: FontWeight.bold,
+										    		height: 1.4,color: Colors.white,
+										    	),
+										    ),
+										const SizedBox(height: 16),
+										Text(
+											'انظر لزر البرق بجانب كل طالب',
+											textAlign: TextAlign.center,
+											style: Theme.of(context).textTheme.titleMedium?.copyWith(
+												color: Colors.white,
+											),
+										),
+										const SizedBox(height: 32),
+										FilledButton.icon(
+											onPressed: onDismiss,
+											icon: const Icon(Icons.check),
+											label: const Text('فهمت'),
+										),
+									],
+								),
+							),
+						),
+						if (iconRect != null)
+							Positioned(
+								left: iconRect!.left - 12,
+								top: iconRect!.top - 12,
+								child: IgnorePointer(
+									child: Container(
+										width: iconRect!.width + 24,
+										height: iconRect!.height + 24,
+										decoration: BoxDecoration(
+											border: Border.all(color: Theme.of(context).colorScheme.primary, width: 3),
+											borderRadius: BorderRadius.circular(12),
+											boxShadow: [
+												BoxShadow(
+													color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+													blurRadius: 12,
+													spreadRadius: 2,
+												),
+											],
+										),
+									),
+								),
+							),
+					],
+				),
+			),
+		);
+	}
+}
+
+class _SpotlightPainter extends CustomPainter {
+	final Rect? holeRect;
+
+	_SpotlightPainter(this.holeRect);
+
+	@override
+	void paint(Canvas canvas, Size size) {
+		final overlayPath = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+		Path holePath;
+		if (holeRect != null) {
+			holePath = Path()
+				..addRRect(RRect.fromRectAndRadius(holeRect!.inflate(16), const Radius.circular(12)));
+		} else {
+			holePath = Path(); // no hole
+		}
+		final path = Path.combine(PathOperation.difference, overlayPath, holePath);
+		canvas.drawPath(path, Paint()..color = Colors.black54);
+	}
+
+	@override
+	bool shouldRepaint(covariant _SpotlightPainter old) => old.holeRect != holeRect;
 }
 
 Future<void> _showHistory(BuildContext context, Student student) async {
@@ -297,7 +468,7 @@ class _MemResult {
     final int ayahFrom;
     final int ayahTo;
     final DateTime date;
-    final String? label; // حفظ / مراجعة / تثبيت
+    final String? label;
     _MemResult(this.surahIndex, this.ayahFrom, this.ayahTo, this.date, this.label);
 }
 
@@ -316,7 +487,7 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
         if (f > t) return 'بداية المقطع يجب أن تكون قبل النهاية';
         final maxAyah = maxAyahsOfSurah(surahIndex);
         if (maxAyah > 0 && (t > maxAyah || f > maxAyah)) {
-            return 'آخر آية في ${surahNameByIndex(surahIndex)} هي ${maxAyah}';
+            return 'آخر آية في ${surahNameByIndex(surahIndex)} هي $maxAyah';
         }
         return null;
     }
@@ -350,7 +521,7 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                                 child: Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                     children: [
-                                                        Text(dateStr(), textDirection: TextDirection.ltr, textAlign: TextAlign.left),
+                                                        Text(dateStr(), textDirection: TextDirection.ltr),
                                                         const Icon(Icons.calendar_today),
                                                     ],
                                                 ),
@@ -379,14 +550,12 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             decoration: const InputDecoration(labelText: 'من الآية'),
                                             keyboardType: TextInputType.number,
                                             textDirection: TextDirection.ltr,
-                                            textAlign: TextAlign.left,
                                         ),
                                         TextField(
                                             controller: toController,
                                             decoration: const InputDecoration(labelText: 'إلى الآية'),
                                             keyboardType: TextInputType.number,
                                             textDirection: TextDirection.ltr,
-                                            textAlign: TextAlign.left,
                                         ),
                                         const SizedBox(height: 8),
                                         OutlinedButton.icon(
@@ -408,21 +577,9 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             child: Wrap(
                                                 spacing: 8,
                                                 children: [
-                                                    ChoiceChip(
-                                                        label: const Text('حفظ'),
-                                                        selected: (label ?? 'حفظ') == 'حفظ',
-                                                        onSelected: (_) => setState(() => label = 'حفظ'),
-                                                    ),
-                                                    ChoiceChip(
-                                                        label: const Text('مراجعة'),
-                                                        selected: label == 'مراجعة',
-                                                        onSelected: (_) => setState(() => label = 'مراجعة'),
-                                                    ),
-                                                    ChoiceChip(
-                                                        label: const Text('تثبيت'),
-                                                        selected: label == 'تثبيت',
-                                                        onSelected: (_) => setState(() => label = 'تثبيت'),
-                                                    ),
+                                                    ChoiceChip(label: const Text('حفظ'), selected: (label ?? 'حفظ') == 'حفظ', onSelected: (_) => setState(() => label = 'حفظ')),
+                                                    ChoiceChip(label: const Text('مراجعة'), selected: label == 'مراجعة', onSelected: (_) => setState(() => label = 'مراجعة')),
+                                                    ChoiceChip(label: const Text('تثبيت'), selected: label == 'تثبيت', onSelected: (_) => setState(() => label = 'تثبيت')),
                                                 ],
                                             ),
                                         ),
@@ -442,7 +599,7 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             surahIndex,
                                             int.parse(fromController.text.trim()),
                                             int.parse(toController.text.trim()),
-									DateTime(date.year, date.month, date.day),
+                                            DateTime(date.year, date.month, date.day),
                                             label ?? 'حفظ',
                                         ));
                                     },
@@ -485,15 +642,8 @@ Future<int?> _pickSurahIndex(BuildContext context, int initial) async {
                                 child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                        Container(
-                                            width: 40,
-                                            height: 4,
-                                            margin: const EdgeInsets.only(bottom: 12),
-                                            decoration: BoxDecoration(color: Theme.of(ctx).dividerColor, borderRadius: BorderRadius.circular(2)),
-                                        ),
                                         TextField(
                                             controller: controller,
-                                            autofocus: true,
                                             decoration: const InputDecoration(labelText: 'ابحث باسم السورة أو رقمها'),
                                             onChanged: (v) => setState(() => query = v),
                                         ),
@@ -531,6 +681,246 @@ Future<int?> _pickSurahIndex(BuildContext context, int initial) async {
     return result ?? initial;
 }
 
+Future<void> _addMultipleMemorizedSections(BuildContext context, Student student) async {
+    final selectedSurahs = <int>{};
+    final selectedJuzs = <int>{};
+    DateTime date = DateTime.now();
+    String? label = 'حفظ';
+    final searchController = TextEditingController();
+
+    final result = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+            return Directionality(
+                textDirection: TextDirection.rtl,
+                child: StatefulBuilder(
+                    builder: (ctx, setState) {
+                        final query = searchController.text.trim();
+                        final surahItems = <Map<String, dynamic>>[
+                            for (int i = 1; i <= kSurahNames.length; i++)
+                                {'i': i, 'name': surahNameByIndex(i)}
+                        ].where((e) {
+                            if (query.isEmpty) return true;
+                            return e['name'].toString().contains(query) || e['i'].toString().contains(query);
+                        }).toList();
+
+                        String dateStr() =>
+                            '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+                        final totalCount = selectedSurahs.length + selectedJuzs.length;
+                        final canAdd = totalCount > 0;
+
+                        return SafeArea(
+                            child: Padding(
+                                padding: EdgeInsets.only(
+                                    bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                                    left: 16, right: 16, top: 12,
+                                ),
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                        Row(children: [
+                                            Expanded(child: Text('إضافة حفظ - ${student.name}', style: Theme.of(ctx).textTheme.titleLarge)),
+                                            IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                                        ]),
+                                        const SizedBox(height: 12),
+                                        InkWell(
+                                            onTap: () async {
+                                                final picked = await showDatePicker(
+                                                    context: ctx,
+                                                    firstDate: DateTime(2000, 1, 1),
+                                                    lastDate: DateTime.now(),
+                                                    initialDate: date,
+                                                );
+                                                if (picked != null) setState(() => date = picked);
+                                            },
+                                            child: InputDecorator(
+                                                decoration: const InputDecoration(labelText: 'تاريخ الحفظ'),
+                                                child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                        Text(dateStr(), textDirection: TextDirection.ltr),
+                                                        const Icon(Icons.calendar_today),
+                                                    ],
+                                                ),
+                                            ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        InputDecorator(
+                                            decoration: const InputDecoration(labelText: 'النوع'),
+                                            child: Wrap(
+                                                spacing: 8,
+                                                children: [
+                                                    ChoiceChip(
+                                                        label: const Text('حفظ'),
+                                                        selected: (label ?? 'حفظ') == 'حفظ',
+                                                        onSelected: (_) => setState(() => label = 'حفظ'),
+                                                    ),
+                                                    ChoiceChip(
+                                                        label: const Text('مراجعة'),
+                                                        selected: label == 'مراجعة',
+                                                        onSelected: (_) => setState(() => label = 'مراجعة'),
+                                                    ),
+                                                    ChoiceChip(
+                                                        label: const Text('تثبيت'),
+                                                        selected: label == 'تثبيت',
+                                                        onSelected: (_) => setState(() => label = 'تثبيت'),
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        DefaultTabController(
+                                            length: 2,
+                                            child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                    const TabBar(
+                                                        tabs: [Tab(text: 'سور'), Tab(text: 'أجزاء')],
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    SizedBox(
+                                                        height: 280,
+                                                        child: TabBarView(
+                                                            children: [
+                                                                Column(
+                                                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                                    mainAxisSize: MainAxisSize.min,
+                                                                    children: [
+                                                                        TextField(
+                                                                            controller: searchController,
+                                                                            decoration: const InputDecoration(
+                                                                                labelText: 'ابحث باسم السورة أو رقمها',
+                                                                                prefixIcon: Icon(Icons.search),
+                                                                            ),
+                                                                            onChanged: (_) => setState(() {}),
+                                                                        ),
+                                                                        const SizedBox(height: 4),
+                                                                        Expanded(
+                                                                            child: ListView.builder(
+                                                                                shrinkWrap: true,
+                                                                                itemCount: surahItems.length,
+                                                                                itemBuilder: (_, idx) {
+                                                                                    final i = surahItems[idx]['i'] as int;
+                                                                                    final name = surahItems[idx]['name'] as String;
+                                                                                    final isSelected = selectedSurahs.contains(i);
+                                                                                    return CheckboxListTile(
+                                                                                        title: Text('$i - $name'),
+                                                                                        value: isSelected,
+                                                                                        onChanged: (_) {
+                                                                                            setState(() {
+                                                                                                if (isSelected)
+                                                                                                    selectedSurahs.remove(i);
+                                                                                                else
+                                                                                                    selectedSurahs.add(i);
+                                                                                            });
+                                                                                        },
+                                                                                    );
+                                                                                },
+                                                                            ),
+                                                                        ),
+                                                                    ],
+                                                                ),
+                                                                ListView.builder(
+                                                                    shrinkWrap: true,
+                                                                    itemCount: 30,
+                                                                    itemBuilder: (_, idx) {
+                                                                        final juz = idx + 1;
+                                                                        final isSelected = selectedJuzs.contains(juz);
+                                                                        return CheckboxListTile(
+                                                                            title: Text('الجزء $juz'),
+                                                                            value: isSelected,
+                                                                            onChanged: (_) {
+                                                                                setState(() {
+                                                                                    if (isSelected)
+                                                                                        selectedJuzs.remove(juz);
+                                                                                    else
+                                                                                        selectedJuzs.add(juz);
+                                                                                });
+                                                                            },
+                                                                        );
+                                                                    },
+                                                                ),
+                                                            ],
+                                                        ),
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                                Text(
+                                                    '${selectedSurahs.length} سورة ، ${selectedJuzs.length} جزء',
+                                                    style: Theme.of(ctx).textTheme.bodySmall,
+                                                ),
+                                                FilledButton.icon(
+                                                    icon: const Icon(Icons.add),
+                                                    label: const Text('إضافة المحدد'),
+                                                    onPressed: canAdd ? () => Navigator.pop(ctx, true) : null,
+                                                ),
+                                            ],
+                                        ),
+                                        const SizedBox(height: 16),
+                                    ],
+                                ),
+                            ),
+                        );
+                    },
+                ),
+            );
+        },
+    ).whenComplete(() => searchController.dispose());
+
+    if (result != true || (selectedSurahs.isEmpty && selectedJuzs.isEmpty)) return;
+
+    final repo = MemorizationRepository();
+    final lbl = label ?? 'حفظ';
+    String toIsoDate(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final memorizedOn = toIsoDate(date);
+    int added = 0;
+
+    for (final surahIndex in selectedSurahs.toList()..sort()) {
+        final maxAyah = maxAyahsOfSurah(surahIndex);
+        if (maxAyah > 0) {
+            await repo.insert(MemorizedSection(
+                studentId: student.id!,
+                surahIndex: surahIndex,
+                ayahFrom: 1,
+                ayahTo: maxAyah,
+                createdAt: DateTime.now().toIso8601String(),
+                memorizedOn: memorizedOn,
+                label: lbl,
+            ));
+            added++;
+        }
+    }
+
+    for (final juz in selectedJuzs.toList()..sort()) {
+        for (final r in rangesForJuz(juz, maxAyahsOfSurah)) {
+            await repo.insert(MemorizedSection(
+                studentId: student.id!,
+                surahIndex: r.surah,
+                ayahFrom: r.from,
+                ayahTo: r.to,
+                createdAt: DateTime.now().toIso8601String(),
+                memorizedOn: memorizedOn,
+                label: lbl,
+            ));
+            added++;
+        }
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تمت إضافة $added مقطع')),
+    );
+}
 
 class _MemTabList extends StatelessWidget {
     final List<MemorizedSection> items;

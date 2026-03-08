@@ -43,6 +43,40 @@ int juzForAyah(int surahIndex, int ayah) {
   return 1;
 }
 
+/// Returns the list of (surah, from, to) ranges that make up juz [j] (1-based).
+/// Used for adding a whole juz to memorization.
+List<({int surah, int from, int to})> rangesForJuz(int j, int Function(int) maxAyahsOfSurah) {
+  if (j < 1 || j > 30) return [];
+  final start = kJuzStarts[j - 1];
+  int endSurah;
+  int endAyah;
+  if (j < 30) {
+    final next = kJuzStarts[j];
+    if (next.ayah > 1) {
+      endSurah = next.surah;
+      endAyah = next.ayah - 1;
+    } else {
+      endSurah = next.surah - 1;
+      endAyah = maxAyahsOfSurah(endSurah);
+    }
+  } else {
+    endSurah = 114;
+    endAyah = 6;
+  }
+  final result = <({int surah, int from, int to})>[];
+  int s = start.surah;
+  int a = start.ayah;
+  while (s < endSurah || (s == endSurah && a <= endAyah)) {
+    final maxInSurah = maxAyahsOfSurah(s);
+    final to = s == endSurah ? endAyah : maxInSurah;
+    result.add((surah: s, from: a, to: to));
+    if (s == endSurah) break;
+    s++;
+    a = 1;
+  }
+  return result;
+}
+
 /// Splits a range (surah, from, to) into sub-ranges per juz.
 /// Returns list of (juz, from, to) for each juz the range touches.
 List<({int juz, int from, int to})> splitRangeByJuz(int surahIndex, int from, int to) {
