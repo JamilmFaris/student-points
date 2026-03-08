@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/students_cubit.dart';
@@ -12,6 +15,8 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 
 import 'widgets/app_drawer.dart';
 import 'notes_screen.dart';
+
+final _contactsChannel = MethodChannel('student_points/contacts');
 
 class StudentsScreen extends StatelessWidget {
 	const StudentsScreen({super.key});
@@ -366,6 +371,42 @@ Widget _infoRow(BuildContext context, String label, String? value) {
     );
 }
 
+/// Opens the system Contacts app to pick a phone number. On Android uses a phone-specific
+/// intent so the Contacts app opens (e.g. on Redmi/MIUI) instead of the file picker.
+Future<String?> _openNativeContactPicker(BuildContext context) async {
+    try {
+        if (Platform.isAndroid) {
+            if (!await FlutterContacts.requestPermission(readonly: true)) {
+                if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب السماح بالوصول إلى جهات الاتصال')));
+                }
+                return null;
+            }
+            final number = await _contactsChannel.invokeMethod<String?>('pickPhoneNumber');
+            return number;
+        }
+        // iOS: use flutter_contacts external picker
+        if (!await FlutterContacts.requestPermission(readonly: true)) {
+            if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب السماح بالوصول إلى جهات الاتصال')));
+            }
+            return null;
+        }
+        final contact = await FlutterContacts.openExternalPick();
+        if (contact == null) return null;
+        final full = await FlutterContacts.getContact(contact.id, withProperties: true);
+        final number = (full?.phones.isNotEmpty ?? false) ? full!.phones.first.number.trim() : null;
+        return number?.isNotEmpty == true ? number : null;
+    } on PlatformException catch (_) {
+        if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر فتح جهات الاتصال')));
+        }
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
 Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Student? student, String? name, String? dateOfBirth, String? schoolName, String? fatherName, String? motherName, String? phoneNumber, String? birthPlace, String? grade}) async {
     final nameController = TextEditingController(text: name ?? '');
     final dobController = TextEditingController(text: dateOfBirth ?? '');
@@ -391,7 +432,7 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stud
             context: context,
             firstDate: first,
             lastDate: now,
-            initialDate: init ?? now,
+            initialDate: init,
         );
         if (picked != null) {
             dobController.text = picked.toIso8601String().substring(0, 10);
@@ -429,20 +470,13 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stud
                             controller: phoneController,
                             decoration: InputDecoration(
                                 labelText: 'رقم الهاتف',
-                                suffixIcon: IconButton(
+                                        suffixIcon: IconButton(
                                     icon: const Icon(Icons.contacts),
                                     onPressed: () async {
-                                        try {
-                                            if (!await FlutterContacts.requestPermission(readonly: true)) return;
-                                            final contact = await FlutterContacts.openExternalPick();
-                                            if (contact == null) return;
-                                            // To get numbers, refetch with properties
-                                            final full = await FlutterContacts.getContact(contact.id, withProperties: true);
-                                            final number = (full?.phones.isNotEmpty ?? false) ? full!.phones.first.number : '';
-                                            if (number.trim().isNotEmpty) {
-                                                phoneController.text = number.trim();
-                                            }
-                                        } catch (_) {}
+                                        final number = await _openNativeContactPicker(context);
+                                        if (number != null && number.trim().isNotEmpty) {
+                                            phoneController.text = number.trim();
+                                        }
                                     },
                                 ),
                             ),
@@ -456,7 +490,7 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stud
                         if (student != null)
                             OutlinedButton.icon(icon: const Icon(Icons.note_add_outlined), label: const Text('ملاحظات'), onPressed: () {
                                 Navigator.pop(context);
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => NotesScreen(student: student!)));
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => NotesScreen(student: student)));
                             },),
                     ],
                 ),
