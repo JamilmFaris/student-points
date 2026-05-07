@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 11,
+			version: 12,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -61,7 +61,11 @@ class AppDatabase {
 						mother_name TEXT,
 						phone_number TEXT,
 						birth_place TEXT,
-						grade TEXT
+						grade TEXT,
+						sync_status TEXT NOT NULL DEFAULT 'synced',
+						remote_id INTEGER,
+						last_modified TEXT,
+						server_updated_at TEXT
 					);
 				''');
 				await db.execute('''
@@ -83,11 +87,26 @@ class AppDatabase {
 						habit_id INTEGER NOT NULL,
 						count INTEGER NOT NULL DEFAULT 0,
 						points_earned INTEGER NOT NULL DEFAULT 0,
+						sync_status TEXT NOT NULL DEFAULT 'synced',
+						remote_id INTEGER,
+						last_modified TEXT,
+						server_updated_at TEXT,
 						UNIQUE(date, student_id, habit_id),
 						FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE,
 						FOREIGN KEY(habit_id) REFERENCES habits(id) ON DELETE CASCADE
 					);
 				''');
+				await db.execute('''
+					CREATE TABLE sync_queue (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						operation TEXT NOT NULL,
+						payload TEXT NOT NULL,
+						created_at TEXT NOT NULL,
+						status TEXT NOT NULL DEFAULT 'pending',
+						error_message TEXT
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status)');
 			},
 			onUpgrade: (db, oldVersion, newVersion) async {
 			// All ALTER TABLE calls are guarded with PRAGMA table_info checks so that
@@ -194,6 +213,37 @@ class AppDatabase {
 				''');
 				await db.execute('CREATE INDEX IF NOT EXISTS idx_student_notes_student ON student_notes(student_id)');
 			}
+			// v12: add sync columns + sync_queue table for backend integration.
+			// Habits stay local-only (not synced), so they don't get sync columns.
+			if (oldVersion < 12) {
+				for (final table in ['students', 'daily_entries', 'quran_memorization']) {
+					final cols = await db.rawQuery('PRAGMA table_info($table)');
+					final names = cols.map((e) => e['name'] as String).toSet();
+					if (!names.contains('sync_status')) {
+						await db.execute("ALTER TABLE $table ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'");
+					}
+					if (!names.contains('remote_id')) {
+						await db.execute('ALTER TABLE $table ADD COLUMN remote_id INTEGER');
+					}
+					if (!names.contains('last_modified')) {
+						await db.execute('ALTER TABLE $table ADD COLUMN last_modified TEXT');
+					}
+					if (!names.contains('server_updated_at')) {
+						await db.execute('ALTER TABLE $table ADD COLUMN server_updated_at TEXT');
+					}
+				}
+				await db.execute('''
+					CREATE TABLE IF NOT EXISTS sync_queue (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						operation TEXT NOT NULL,
+						payload TEXT NOT NULL,
+						created_at TEXT NOT NULL,
+						status TEXT NOT NULL DEFAULT 'pending',
+						error_message TEXT
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status)');
+			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
 			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
@@ -288,6 +338,35 @@ class AppDatabase {
 						);
 					''');
 					await db.execute('CREATE INDEX IF NOT EXISTS idx_student_notes_student ON student_notes(student_id)');
+					// Defensive: ensure sync columns + sync_queue exist (for restored backups
+					// that pre-date v12). Habits remain local-only.
+					for (final table in ['students', 'daily_entries', 'quran_memorization']) {
+						final cols = await db.rawQuery('PRAGMA table_info($table)');
+						final names = cols.map((e) => e['name'] as String).toSet();
+						if (!names.contains('sync_status')) {
+							await db.execute("ALTER TABLE $table ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'");
+						}
+						if (!names.contains('remote_id')) {
+							await db.execute('ALTER TABLE $table ADD COLUMN remote_id INTEGER');
+						}
+						if (!names.contains('last_modified')) {
+							await db.execute('ALTER TABLE $table ADD COLUMN last_modified TEXT');
+						}
+						if (!names.contains('server_updated_at')) {
+							await db.execute('ALTER TABLE $table ADD COLUMN server_updated_at TEXT');
+						}
+					}
+					await db.execute('''
+						CREATE TABLE IF NOT EXISTS sync_queue (
+							id INTEGER PRIMARY KEY AUTOINCREMENT,
+							operation TEXT NOT NULL,
+							payload TEXT NOT NULL,
+							created_at TEXT NOT NULL,
+							status TEXT NOT NULL DEFAULT 'pending',
+							error_message TEXT
+						);
+					''');
+					await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status)');
 			},
 		);
 	}
