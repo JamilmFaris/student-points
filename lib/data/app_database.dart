@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 14,
+			version: 15,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -107,6 +107,19 @@ class AppDatabase {
 					);
 				''');
 				await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status)');
+				await db.execute('''
+					CREATE TABLE lessons (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						date TEXT NOT NULL UNIQUE,
+						subject TEXT NOT NULL DEFAULT '',
+						sync_status TEXT NOT NULL DEFAULT 'pending_create',
+						remote_id INTEGER,
+						last_modified TEXT,
+						server_updated_at TEXT,
+						attendance_pushed_at TEXT
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_lessons_date ON lessons(date)');
 			},
 			onUpgrade: (db, oldVersion, newVersion) async {
 			// All ALTER TABLE calls are guarded with PRAGMA table_info checks so that
@@ -261,6 +274,35 @@ class AppDatabase {
 					"UPDATE daily_entries SET sync_status = 'pending_create' "
 					"WHERE last_modified IS NULL AND sync_status = 'synced'");
 			}
+			// v15: lessons table — one row per tracking-points day. Pushed to
+			// the server so that attendance (per lesson, per date) has a parent.
+			if (oldVersion < 15) {
+				await db.execute('''
+					CREATE TABLE IF NOT EXISTS lessons (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						date TEXT NOT NULL UNIQUE,
+						subject TEXT NOT NULL DEFAULT '',
+						sync_status TEXT NOT NULL DEFAULT 'pending_create',
+						remote_id INTEGER,
+						last_modified TEXT,
+						server_updated_at TEXT,
+						attendance_pushed_at TEXT
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_lessons_date ON lessons(date)');
+				// Backfill: one lesson per existing distinct daily_entries date.
+				final dates = await db.rawQuery(
+					'SELECT DISTINCT date FROM daily_entries ORDER BY date ASC');
+				final nowIso = DateTime.now().toUtc().toIso8601String();
+				for (final r in dates) {
+					await db.insert('lessons', {
+						'date': r['date'],
+						'subject': '',
+						'sync_status': 'pending_create',
+						'last_modified': nowIso,
+					});
+				}
+			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
 			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
@@ -387,6 +429,20 @@ class AppDatabase {
 						);
 					''');
 					await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status)');
+					// Ensure lessons table exists (defensive)
+					await db.execute('''
+						CREATE TABLE IF NOT EXISTS lessons (
+							id INTEGER PRIMARY KEY AUTOINCREMENT,
+							date TEXT NOT NULL UNIQUE,
+							subject TEXT NOT NULL DEFAULT '',
+							sync_status TEXT NOT NULL DEFAULT 'pending_create',
+							remote_id INTEGER,
+							last_modified TEXT,
+							server_updated_at TEXT,
+							attendance_pushed_at TEXT
+						);
+					''');
+					await db.execute('CREATE INDEX IF NOT EXISTS idx_lessons_date ON lessons(date)');
 			},
 		);
 	}

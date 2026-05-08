@@ -90,7 +90,7 @@ class _AuthInterceptor extends Interceptor {
     if (!_shouldSkip(options)) {
       final token = await _client.tokenStorage.readAccess();
       if (token != null) {
-        options.headers['Authorization'] = 'Bearer $token';
+        options.headers['Authorization'] = '$token';
       }
     }
     handler.next(options);
@@ -117,7 +117,7 @@ class _AuthInterceptor extends Interceptor {
     final retryOptions = original.copyWith(
       headers: {
         ...original.headers,
-        'Authorization': 'Bearer $newAccess',
+        'Authorization': '$newAccess',
       },
       extra: {...original.extra, '__retry__': true},
     );

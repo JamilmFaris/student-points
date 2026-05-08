@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/habit.dart';
+import '../repositories/habit_repository.dart';
+import '../services/app_mode.dart';
 import '../services/backup_service.dart';
 import 'widgets/app_drawer.dart';
 
@@ -12,16 +15,66 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
 	String _backupPath = '';
+	List<Habit> _habits = const [];
+	Habit? _resolvedAttendanceHabit;
+	bool _attendanceFromName = false; // true if a حضور habit dictates the choice
 
 	@override
 	void initState() {
 		super.initState();
 		_loadBackupPath();
+		_loadAttendance();
 	}
 
 	Future<void> _loadBackupPath() async {
 		final path = await BackupService.getAutoBackupPath();
 		if (mounted) setState(() => _backupPath = path);
+	}
+
+	Future<void> _loadAttendance() async {
+		final habits = await HabitRepository().getAll();
+		final resolved = await AppMode.resolveAttendanceHabit(habits);
+		final byName = habits.any(
+			(h) => h.name.trim() == AppMode.defaultAttendanceHabitName,
+		);
+		if (!mounted) return;
+		setState(() {
+			_habits = habits;
+			_resolvedAttendanceHabit = resolved;
+			_attendanceFromName = byName;
+		});
+	}
+
+	Future<void> _pickAttendanceHabit() async {
+		final picked = await showDialog<Habit>(
+			context: context,
+			builder: (ctx) => Directionality(
+				textDirection: TextDirection.rtl,
+				child: AlertDialog(
+					title: const Text('اختر العادة الخاصة بالحضور'),
+					content: SizedBox(
+						width: double.maxFinite,
+						child: ListView.builder(
+							shrinkWrap: true,
+							itemCount: _habits.length,
+							itemBuilder: (_, i) => ListTile(
+								title: Text(_habits[i].name),
+								onTap: () => Navigator.pop(ctx, _habits[i]),
+							),
+						),
+					),
+					actions: [
+						TextButton(
+							onPressed: () => Navigator.pop(ctx),
+							child: const Text('إلغاء'),
+						),
+					],
+				),
+			),
+		);
+		if (picked == null) return;
+		await AppMode.setAttendanceHabitOverride(picked.id);
+		await _loadAttendance();
 	}
 
 	@override
@@ -34,6 +87,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
 				body: ListView(
 					padding: const EdgeInsets.all(16),
 					children: [
+						Card(
+							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+							child: Padding(
+								padding: const EdgeInsets.all(16),
+								child: Column(
+									crossAxisAlignment: CrossAxisAlignment.start,
+									children: [
+										const Text('العادة الخاصة بالحضور', style: TextStyle(fontWeight: FontWeight.w700)),
+										const SizedBox(height: 8),
+										const Text(
+											'تُحدِّد هذه العادة الحضور — كل طالب يحصل على نقاط موجبة عليها يُعدّ حاضراً لذلك اليوم.',
+											style: TextStyle(fontSize: 13),
+										),
+										const SizedBox(height: 12),
+										Text(
+											_resolvedAttendanceHabit == null
+												? 'لم يتم التعيين'
+												: 'الحالية: ${_resolvedAttendanceHabit!.name}'
+													+ (_attendanceFromName ? '  (مأخوذة من اسم العادة)' : ''),
+											style: const TextStyle(fontSize: 13),
+										),
+										const SizedBox(height: 12),
+										Wrap(
+											spacing: 8,
+											runSpacing: 8,
+											children: [
+												OutlinedButton.icon(
+													icon: const Icon(Icons.edit),
+													label: const Text('تغيير'),
+													onPressed: _habits.isEmpty || _attendanceFromName
+														? null
+														: _pickAttendanceHabit,
+												),
+												if (!_attendanceFromName && _resolvedAttendanceHabit != null)
+													TextButton.icon(
+														icon: const Icon(Icons.clear),
+														label: const Text('إلغاء التعيين'),
+														onPressed: () async {
+															await AppMode.setAttendanceHabitOverride(null);
+															await _loadAttendance();
+														},
+													),
+											],
+										),
+										if (_attendanceFromName) ...[
+											const SizedBox(height: 6),
+											const Text(
+												'لا يمكن تغييرها هنا لأن لديك عادة باسم "حضور" — أعد تسميتها أولاً.',
+												style: TextStyle(fontSize: 12, color: Colors.black54),
+											),
+										],
+									],
+								),
+							),
+						),
+						const SizedBox(height: 12),
 						Card(
 							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
 							child: Padding(

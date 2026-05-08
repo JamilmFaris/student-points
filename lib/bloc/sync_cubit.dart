@@ -41,7 +41,15 @@ class SyncCubit extends Cubit<SyncState> {
     try {
       final result = await op();
       final pushFails = result.studentsPushFailed +
+          result.studentsUpdateFailed +
+          result.studentsDeleteFailed +
           result.hifzPushFailed +
+          result.hifzUpdateFailed +
+          result.hifzDeleteFailed +
+          result.lessonsPushFailed +
+          result.lessonsUpdateFailed +
+          result.lessonsDeleteFailed +
+          result.attendancePushFailed +
           result.pointsBatchesFailed;
       final unmapped = result.pointsRowsSkipped;
       if (pushFails > 0) {

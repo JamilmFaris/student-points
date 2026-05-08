@@ -32,6 +32,44 @@ class StudentsApi {
     }
   }
 
+  /// `PATCH /api/students/{id}/`. Sends only the fields we have locally.
+  Future<StudentDto> update(int remoteId, StudentDto payload) async {
+    try {
+      final body = <String, dynamic>{
+        'first_name': payload.firstName,
+        'last_name': payload.lastName,
+        if (payload.fatherName != null) 'father_name': payload.fatherName,
+        if (payload.motherName != null) 'mother_name': payload.motherName,
+        if (payload.dateOfBirth != null) 'date_of_birth': payload.dateOfBirth,
+        if (payload.school != null) 'school': payload.school,
+        if (payload.phoneNumber != null) 'phone_number': payload.phoneNumber,
+        if (payload.parentPhoneNumber != null)
+          'parent_phone_number': payload.parentPhoneNumber,
+        if (payload.birthPlace != null) 'birth_place': payload.birthPlace,
+      };
+      final res = await _dio.patch('/api/students/$remoteId/', data: body);
+      if ((res.statusCode == 200 || res.statusCode == 202) && res.data is Map) {
+        return StudentDto.fromJson(Map<String, dynamic>.from(res.data as Map));
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل تحديث الطالب');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
+  /// `DELETE /api/students/{id}/`. Backend performs a soft-delete.
+  Future<void> delete(int remoteId) async {
+    try {
+      final res = await _dio.delete('/api/students/$remoteId/');
+      if (res.statusCode == 204 || res.statusCode == 200 || res.statusCode == 404) {
+        return;
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل حذف الطالب');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
   /// `POST /api/students/`. Returns the created row (with `id`/`updated_at`).
   /// Server-required fields (date_of_birth, father_name, mother_name, school) are
   /// sent as empty strings when locally absent — matches DRF defaults rather than

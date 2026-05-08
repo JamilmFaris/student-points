@@ -30,6 +30,48 @@ class HifzApi {
     }
   }
 
+  /// `PATCH /api/quran/hifz/{id}/`. Local-driven update.
+  Future<HifzDto> update({
+    required int remoteId,
+    int? chapterIndex,
+    int? start,
+    int? end,
+    String? date,
+    String? label,
+    String? notes,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        if (chapterIndex != null) 'chapter_index': chapterIndex,
+        if (start != null) 'start': start,
+        if (end != null) 'end': end,
+        if (date != null) 'date': date,
+        if (label != null) 'label': label,
+        if (notes != null) 'notes': notes,
+      };
+      final res = await _dio.patch('/api/quran/hifz/$remoteId/', data: body);
+      if ((res.statusCode == 200 || res.statusCode == 202) && res.data is Map) {
+        return HifzDto.fromJson(Map<String, dynamic>.from(res.data as Map));
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل تحديث الحفظ');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
+  /// `DELETE /api/quran/hifz/{id}/` (server soft-delete).
+  Future<void> delete(int remoteId) async {
+    try {
+      final res = await _dio.delete('/api/quran/hifz/$remoteId/');
+      if (res.statusCode == 204 || res.statusCode == 200 || res.statusCode == 404) {
+        return;
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل حذف الحفظ');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
   /// `POST /api/quran/hifz/`. [studentId] is the *server-side* id (resolved by
   /// the caller from the local `students.remote_id` map).
   Future<HifzDto> create({

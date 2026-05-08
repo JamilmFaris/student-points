@@ -5,7 +5,12 @@ import 'package:sqflite/sqflite.dart' as sqflite;
 class StudentRepository {
 	Future<List<Student>> getAll() async {
 		final db = await AppDatabase().database;
-		final rows = await db.query('students', orderBy: 'sort_order ASC, name COLLATE NOCASE');
+		// Hide rows tombstoned for server-side deletion until SyncService drains them.
+		final rows = await db.query(
+			'students',
+			where: "sync_status IS NULL OR sync_status != 'pending_delete'",
+			orderBy: 'sort_order ASC, name COLLATE NOCASE',
+		);
 		return rows.map((e) => Student.fromMap(e)).toList();
 	}
 
@@ -54,7 +59,17 @@ class StudentRepository {
 
 	Future<int> delete(int id) async {
 		final db = await AppDatabase().database;
-		return db.delete('students', where: 'id = ?', whereArgs: [id]);
+		final rows = await db.query('students',
+			columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
+		if (rows.isEmpty || rows.first['remote_id'] == null) {
+			// Never made it to the server — hard delete locally.
+			return db.delete('students', where: 'id = ?', whereArgs: [id]);
+		}
+		// Tombstone so SyncService can DELETE on the server, then hard-remove locally.
+		final now = DateTime.now().toUtc().toIso8601String();
+		return db.update('students',
+			{'sync_status': 'pending_delete', 'last_modified': now},
+			where: 'id = ?', whereArgs: [id]);
 	}
 
 	Future<void> updateOrder(List<Student> students) async {

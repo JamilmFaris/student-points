@@ -3,15 +3,18 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api/api_client.dart';
+import 'api/services/attendance_api.dart';
 import 'api/services/auth_api.dart';
 import 'api/services/habits_api.dart';
 import 'api/services/hifz_api.dart';
+import 'api/services/lessons_api.dart';
 import 'api/services/student_points_api.dart';
 import 'api/services/students_api.dart';
 import 'bloc/auth_cubit.dart';
 import 'bloc/students_cubit.dart';
 import 'bloc/sync_cubit.dart';
 import 'repositories/student_repository.dart';
+import 'services/connectivity_watcher.dart';
 import 'services/sync_service.dart';
 import 'services/token_storage.dart';
 import 'ui/habits_screen.dart';
@@ -32,6 +35,8 @@ void main() {
   final hifzApi = HifzApi(apiClient);
   final habitsApi = HabitsApi(apiClient);
   final studentPointsApi = StudentPointsApi(apiClient);
+  final lessonsApi = LessonsApi(apiClient);
+  final attendanceApi = AttendanceApi(apiClient);
 
   final authCubit = AuthCubit(authApi: authApi, tokenStorage: tokenStorage);
   final syncService = SyncService(
@@ -39,10 +44,14 @@ void main() {
     hifzApi: hifzApi,
     habitsApi: habitsApi,
     studentPointsApi: studentPointsApi,
+    lessonsApi: lessonsApi,
+    attendanceApi: attendanceApi,
   );
   final syncCubit = SyncCubit(syncService: syncService);
 
   apiClient.onUnauthenticated = authCubit.forceUnauthenticated;
+
+  ConnectivityWatcher(authCubit: authCubit, syncCubit: syncCubit).start();
 
   runApp(MyApp(authCubit: authCubit, syncCubit: syncCubit));
 }

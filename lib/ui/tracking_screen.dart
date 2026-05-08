@@ -9,6 +9,7 @@ import '../repositories/habit_repository.dart';
 import '../repositories/student_repository.dart';
 import '../repositories/tracking_repository.dart';
 import '../models/habit.dart';
+import '../services/app_mode.dart';
 
 import 'widgets/app_drawer.dart';
 
@@ -26,7 +27,7 @@ class TrackingScreen extends StatelessWidget {
 					BlocProvider(create: (_) => TrackingCubit(TrackingRepository())),
 				],
 				child: Scaffold(
-					appBar: AppBar(title: const Text('تتبع النقاط لليوم')),
+					appBar: AppBar(title: const _LessonAppBarTitle()),
 					drawer: const AppDrawer(),
 					body: SafeArea(top: false, left: false, right: false, bottom: true, child: const _TrackingTable()),
 					floatingActionButton: Builder(
@@ -44,6 +45,62 @@ class TrackingScreen extends StatelessWidget {
 				),
 			),
 		);
+	}
+}
+
+class _LessonAppBarTitle extends StatelessWidget {
+	const _LessonAppBarTitle();
+
+	@override
+	Widget build(BuildContext context) {
+		return BlocBuilder<TrackingCubit, TrackingState>(
+			buildWhen: (a, b) => a.lesson?.subject != b.lesson?.subject || a.date != b.date,
+			builder: (context, state) {
+				final subject = (state.lesson?.subject ?? '').trim();
+				final dateStr = state.date.toIso8601String().substring(0, 10);
+				final title = subject.isEmpty ? 'تتبع النقاط ($dateStr)' : 'درس: $subject';
+				return Row(
+					mainAxisSize: MainAxisSize.min,
+					children: [
+						Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
+						IconButton(
+							tooltip: 'تعديل عنوان الدرس',
+							icon: const Icon(Icons.edit),
+							onPressed: () => _editSubject(context, subject),
+						),
+					],
+				);
+			},
+		);
+	}
+
+	Future<void> _editSubject(BuildContext context, String current) async {
+		final controller = TextEditingController(text: current);
+		final result = await showDialog<String>(
+			context: context,
+			builder: (ctx) => Directionality(
+				textDirection: TextDirection.rtl,
+				child: AlertDialog(
+					title: const Text('عنوان الدرس'),
+					content: TextField(
+						controller: controller,
+						autofocus: true,
+						decoration: const InputDecoration(labelText: 'مثال: درس الفقه'),
+					),
+					actions: [
+						TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+						FilledButton(
+							onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+							child: const Text('حفظ'),
+						),
+					],
+				),
+			),
+		);
+		controller.dispose();
+		if (result == null) return;
+		if (!context.mounted) return;
+		await context.read<TrackingCubit>().setLessonSubject(result);
 	}
 }
 
@@ -89,10 +146,82 @@ class _TrackingTableState extends State<_TrackingTable> {
 				_verticalLeftController.jumpTo(_verticalBodyController.offset);
 			}
 		});
-		// Show reminder dialog after first frame
-		WidgetsBinding.instance.addPostFrameCallback((_) {
-			_showReminderIfNeeded(context);
+		// Show reminder dialog after first frame, then force the user to pick
+		// an attendance habit if no حضور habit exists.
+		WidgetsBinding.instance.addPostFrameCallback((_) async {
+			await _showReminderIfNeeded(context);
+			if (!context.mounted) return;
+			await _ensureAttendanceHabit(context);
 		});
+	}
+
+	Future<void> _ensureAttendanceHabit(BuildContext context) async {
+		// Wait until habits load (HabitsCubit emits a non-empty list).
+		final cubit = context.read<HabitsCubit>();
+		List<Habit> habits = cubit.state.habits;
+		if (habits.isEmpty) {
+			// One-shot await: subscribe briefly until first non-empty load.
+			await cubit.stream
+				.firstWhere((s) => !s.loading)
+				.timeout(const Duration(seconds: 5), onTimeout: () => cubit.state);
+			habits = cubit.state.habits;
+		}
+		if (habits.isEmpty) return; // No habits at all — nothing to force.
+		final resolved = await AppMode.resolveAttendanceHabit(habits);
+		if (resolved != null) return;
+		if (!context.mounted) return;
+		final picked = await _showAttendancePicker(context, habits);
+		if (picked != null) {
+			await AppMode.setAttendanceHabitOverride(picked.id);
+			return;
+		}
+		// User dismissed without picking — back out of tracking.
+		if (!context.mounted) return;
+		Navigator.of(context).maybePop();
+	}
+
+	Future<Habit?> _showAttendancePicker(BuildContext context, List<Habit> habits) async {
+		return showDialog<Habit>(
+			context: context,
+			barrierDismissible: false,
+			builder: (ctx) => Directionality(
+				textDirection: TextDirection.rtl,
+				child: AlertDialog(
+					title: const Text('اختر العادة الخاصة بالحضور'),
+					content: SizedBox(
+						width: double.maxFinite,
+						child: Column(
+							mainAxisSize: MainAxisSize.min,
+							crossAxisAlignment: CrossAxisAlignment.start,
+							children: [
+								const Text(
+									'لا توجد عادة باسم "حضور". اختر عادة لتُستخدم كمؤشر للحضور — '
+									'إعطاء الطالب نقاط موجبة على هذه العادة يعني أنه حضر اليوم.',
+									style: TextStyle(fontSize: 13),
+								),
+								const SizedBox(height: 12),
+								Flexible(
+									child: ListView.builder(
+										shrinkWrap: true,
+										itemCount: habits.length,
+										itemBuilder: (_, i) => ListTile(
+											title: Text(habits[i].name),
+											onTap: () => Navigator.pop(ctx, habits[i]),
+										),
+									),
+								),
+							],
+						),
+					),
+					actions: [
+						TextButton(
+							onPressed: () => Navigator.pop(ctx),
+							child: const Text('إلغاء'),
+						),
+					],
+				),
+			),
+		);
 	}
 
 	@override

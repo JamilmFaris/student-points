@@ -4,19 +4,38 @@ import 'package:sqflite/sqflite.dart';
 import '../api/dto/hifz_dto.dart';
 import '../api/dto/student_dto.dart';
 import '../api/services/_dio_error.dart';
+import '../api/services/attendance_api.dart';
 import '../api/services/habits_api.dart';
 import '../api/services/hifz_api.dart';
+import '../api/services/lessons_api.dart';
 import '../api/services/student_points_api.dart';
 import '../api/services/students_api.dart';
 import '../data/app_database.dart';
+import 'app_mode.dart';
 
 class SyncResult {
   const SyncResult({
     this.studentsPushed = 0,
     this.studentsPushFailed = 0,
+    this.studentsUpdated = 0,
+    this.studentsUpdateFailed = 0,
+    this.studentsServerDeleted = 0,
+    this.studentsDeleteFailed = 0,
     this.hifzPushed = 0,
     this.hifzPushFailed = 0,
     this.hifzPushSkipped = 0,
+    this.hifzUpdated = 0,
+    this.hifzUpdateFailed = 0,
+    this.hifzServerDeleted = 0,
+    this.hifzDeleteFailed = 0,
+    this.lessonsPushed = 0,
+    this.lessonsPushFailed = 0,
+    this.lessonsUpdated = 0,
+    this.lessonsUpdateFailed = 0,
+    this.lessonsServerDeleted = 0,
+    this.lessonsDeleteFailed = 0,
+    this.attendancePushed = 0,
+    this.attendancePushFailed = 0,
     this.pointsBatchesPushed = 0,
     this.pointsBatchesFailed = 0,
     this.pointsRowsSkipped = 0,
@@ -27,16 +46,39 @@ class SyncResult {
     this.skippedHifz = 0,
   });
 
+  // Push: create.
   final int studentsPushed;
   final int studentsPushFailed;
   final int hifzPushed;
   final int hifzPushFailed;
-  final int hifzPushSkipped; // hifz rows whose parent student isn't synced yet
-  final int pointsBatchesPushed; // # of /batch/ calls that succeeded
-  final int pointsBatchesFailed; // # of /batch/ calls that failed
-  final int pointsRowsSkipped;   // local rows skipped (unmapped student/habit)
+  final int hifzPushSkipped;        // parent student not synced yet
+  // Push: update.
+  final int studentsUpdated;
+  final int studentsUpdateFailed;
+  final int hifzUpdated;
+  final int hifzUpdateFailed;
+  // Push: delete (server-side success).
+  final int studentsServerDeleted;
+  final int studentsDeleteFailed;
+  final int hifzServerDeleted;
+  final int hifzDeleteFailed;
+  // Push: lessons.
+  final int lessonsPushed;
+  final int lessonsPushFailed;
+  final int lessonsUpdated;
+  final int lessonsUpdateFailed;
+  final int lessonsServerDeleted;
+  final int lessonsDeleteFailed;
+  // Push: attendance (one bulk POST per (lesson, date)).
+  final int attendancePushed;
+  final int attendancePushFailed;
+  // Push: points.
+  final int pointsBatchesPushed;
+  final int pointsBatchesFailed;
+  final int pointsRowsSkipped;      // unmapped student/habit
+  // Pull.
   final int studentsPulled;
-  final int studentsDeleted;
+  final int studentsDeleted;        // server-tombstoned rows pruned locally
   final int hifzPulled;
   final int hifzDeleted;
   final int skippedHifz;
@@ -48,6 +90,8 @@ class SyncService {
     required this.hifzApi,
     required this.habitsApi,
     required this.studentPointsApi,
+    required this.lessonsApi,
+    required this.attendanceApi,
     AppDatabase? db,
   }) : _db = db ?? AppDatabase();
 
@@ -57,6 +101,8 @@ class SyncService {
   final HifzApi hifzApi;
   final HabitsApi habitsApi;
   final StudentPointsApi studentPointsApi;
+  final LessonsApi lessonsApi;
+  final AttendanceApi attendanceApi;
   final AppDatabase _db;
 
   Future<DateTime?> readLastSyncAt() async {
@@ -72,27 +118,71 @@ class SyncService {
 
   /// Used right after login. Pushes any pre-existing local rows that have no
   /// remote_id yet (initial upload), then pulls the full server state.
-  Future<SyncResult> performLoginSync() async {
-    final pushStudent = await _pushPendingStudents();
-    final pushHifz = await _pushPendingHifz();
-    // Habit name→id resolution must happen after students are pushed (so
-    // students.remote_id is available) but before points push.
+  Future<SyncResult> performLoginSync() async => _runSync(fullPull: true);
+
+  /// Push pending writes, then pull only rows changed since `lastSyncAt`.
+  Future<SyncResult> performDeltaSync() async {
+    final last = await readLastSyncAt();
+    if (last == null) return performLoginSync();
+    return _runSync(fullPull: false, since: last);
+  }
+
+  Future<SyncResult> _runSync({required bool fullPull, DateTime? since}) async {
+    // Push order matters:
+    //  - creates first (so updates/points can resolve remote_ids).
+    //  - updates next.
+    //  - deletes next (after dependent rows have caught up).
+    //  - lessons before points so attendance push has lesson.remote_id.
+    //  - points last; attendance push piggybacks per successful date.
+    final createStudents = await _pushPendingStudents();
+    final updateStudents = await _pushUpdatedStudents();
+    final deleteStudents = await _pushDeletedStudents();
+    final createHifz = await _pushPendingHifz();
+    final updateHifz = await _pushUpdatedHifz();
+    final deleteHifz = await _pushDeletedHifz();
+    final createLessons = await _pushPendingLessons();
+    final updateLessons = await _pushUpdatedLessons();
+    final deleteLessons = await _pushDeletedLessons();
     final habitMap = await _loadHabitNameMap();
-    final pushPoints = await _pushPendingPoints(habitMap);
+    final attendanceHabitId = await _resolveAttendanceHabitLocalId();
+    final pushPoints = await _pushPendingPoints(
+      habitMap,
+      attendanceHabitLocalId: attendanceHabitId,
+    );
 
     final db = await _db.database;
-    final students = await studentsApi.getAll();
-    final hifz = await hifzApi.getAll();
+    final students = fullPull
+        ? await studentsApi.getAll()
+        : await studentsApi.getAll(updatedSince: since);
+    final hifz = fullPull
+        ? await hifzApi.getAll()
+        : await hifzApi.getAll(updatedSince: since);
     final studentStats = await _mergeStudents(db, students);
     final hifzStats = await _mergeHifz(db, hifz);
 
     await _writeLastSyncAt(DateTime.now());
     return SyncResult(
-      studentsPushed: pushStudent.pushed,
-      studentsPushFailed: pushStudent.failed,
-      hifzPushed: pushHifz.pushed,
-      hifzPushFailed: pushHifz.failed,
-      hifzPushSkipped: pushHifz.skipped,
+      studentsPushed: createStudents.pushed,
+      studentsPushFailed: createStudents.failed,
+      studentsUpdated: updateStudents.pushed,
+      studentsUpdateFailed: updateStudents.failed,
+      studentsServerDeleted: deleteStudents.pushed,
+      studentsDeleteFailed: deleteStudents.failed,
+      hifzPushed: createHifz.pushed,
+      hifzPushFailed: createHifz.failed,
+      hifzPushSkipped: createHifz.skipped,
+      hifzUpdated: updateHifz.pushed,
+      hifzUpdateFailed: updateHifz.failed,
+      hifzServerDeleted: deleteHifz.pushed,
+      hifzDeleteFailed: deleteHifz.failed,
+      lessonsPushed: createLessons.pushed,
+      lessonsPushFailed: createLessons.failed,
+      lessonsUpdated: updateLessons.pushed,
+      lessonsUpdateFailed: updateLessons.failed,
+      lessonsServerDeleted: deleteLessons.pushed,
+      lessonsDeleteFailed: deleteLessons.failed,
+      attendancePushed: pushPoints.attendancePushed,
+      attendancePushFailed: pushPoints.attendanceFailed,
       pointsBatchesPushed: pushPoints.batchesPushed,
       pointsBatchesFailed: pushPoints.batchesFailed,
       pointsRowsSkipped: pushPoints.rowsSkipped,
@@ -104,38 +194,23 @@ class SyncService {
     );
   }
 
-  /// Push pending writes, then pull only rows changed since `lastSyncAt`.
-  Future<SyncResult> performDeltaSync() async {
-    final last = await readLastSyncAt();
-    if (last == null) return performLoginSync();
+  // ────────────────────── attendance habit resolution ──────────────────────
 
-    final pushStudent = await _pushPendingStudents();
-    final pushHifz = await _pushPendingHifz();
-    final habitMap = await _loadHabitNameMap();
-    final pushPoints = await _pushPendingPoints(habitMap);
-
+  Future<int?> _resolveAttendanceHabitLocalId() async {
     final db = await _db.database;
-    final students = await studentsApi.getAll(updatedSince: last);
-    final hifz = await hifzApi.getAll(updatedSince: last);
-    final studentStats = await _mergeStudents(db, students);
-    final hifzStats = await _mergeHifz(db, hifz);
-
-    await _writeLastSyncAt(DateTime.now());
-    return SyncResult(
-      studentsPushed: pushStudent.pushed,
-      studentsPushFailed: pushStudent.failed,
-      hifzPushed: pushHifz.pushed,
-      hifzPushFailed: pushHifz.failed,
-      hifzPushSkipped: pushHifz.skipped,
-      pointsBatchesPushed: pushPoints.batchesPushed,
-      pointsBatchesFailed: pushPoints.batchesFailed,
-      pointsRowsSkipped: pushPoints.rowsSkipped,
-      studentsPulled: studentStats.pulled,
-      studentsDeleted: studentStats.deleted,
-      hifzPulled: hifzStats.pulled,
-      hifzDeleted: hifzStats.deleted,
-      skippedHifz: hifzStats.skipped,
+    final byName = await db.query(
+      'habits',
+      columns: ['id'],
+      where: 'name = ?',
+      whereArgs: [AppMode.defaultAttendanceHabitName],
+      limit: 1,
     );
+    if (byName.isNotEmpty) return byName.first['id'] as int;
+    final overrideId = await AppMode.getAttendanceHabitOverride();
+    if (overrideId == null) return null;
+    final row = await db.query('habits',
+        columns: ['id'], where: 'id = ?', whereArgs: [overrideId], limit: 1);
+    return row.isEmpty ? null : row.first['id'] as int;
   }
 
   // ────────────────────────── habit name resolution ──────────────────────────
@@ -243,17 +318,250 @@ class SyncService {
     return _PushStats(pushed: pushed, failed: failed, skipped: skipped);
   }
 
+  Future<_PushStats> _pushUpdatedStudents() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'students',
+      where: "sync_status = 'pending_update' AND remote_id IS NOT NULL",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      try {
+        final dto = _localStudentToDto(row);
+        final updated = await studentsApi.update(row['remote_id'] as int, dto);
+        await db.update(
+          'students',
+          {
+            'sync_status': 'synced',
+            'server_updated_at': updated.updatedAt,
+          },
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushDeletedStudents() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'students',
+      columns: ['id', 'remote_id'],
+      where: "sync_status = 'pending_delete'",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      final remoteId = row['remote_id'] as int?;
+      if (remoteId == null) {
+        // Inconsistent state — tombstoned but never on the server. Hard-remove.
+        await db.delete('students', where: 'id = ?', whereArgs: [row['id']]);
+        continue;
+      }
+      try {
+        await studentsApi.delete(remoteId);
+        await db.delete('students', where: 'id = ?', whereArgs: [row['id']]);
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushUpdatedHifz() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'quran_memorization',
+      where: "sync_status = 'pending_update' AND remote_id IS NOT NULL",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      try {
+        final updated = await hifzApi.update(
+          remoteId: row['remote_id'] as int,
+          chapterIndex: row['surah_index'] as int,
+          start: row['ayah_from'] as int,
+          end: row['ayah_to'] as int,
+          date: _toServerDate(
+              row['memorized_on'] as String?, row['created_at'] as String?),
+          label: row['label'] as String?,
+          notes: row['notes'] as String?,
+        );
+        await db.update(
+          'quran_memorization',
+          {
+            'sync_status': 'synced',
+            'server_updated_at': updated.updatedAt,
+          },
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushDeletedHifz() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'quran_memorization',
+      columns: ['id', 'remote_id'],
+      where: "sync_status = 'pending_delete'",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      final remoteId = row['remote_id'] as int?;
+      if (remoteId == null) {
+        await db.delete('quran_memorization',
+            where: 'id = ?', whereArgs: [row['id']]);
+        continue;
+      }
+      try {
+        await hifzApi.delete(remoteId);
+        await db.delete('quran_memorization',
+            where: 'id = ?', whereArgs: [row['id']]);
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  // ────────────────────────── lessons push ──────────────────────────
+
+  /// Server requires a non-empty `subject`; substitute a date-based fallback
+  /// when the local row's subject is empty.
+  String _effectiveLessonSubject(String? subject, String date) {
+    final s = (subject ?? '').trim();
+    return s.isEmpty ? 'درس $date' : s;
+  }
+
+  Future<_PushStats> _pushPendingLessons() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'lessons',
+      where: "sync_status = 'pending_create' AND remote_id IS NULL",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      try {
+        final created = await lessonsApi.create(
+          subject: _effectiveLessonSubject(
+              row['subject'] as String?, row['date'] as String),
+        );
+        await db.update(
+          'lessons',
+          {
+            'remote_id': created.id,
+            'server_updated_at': created.updatedAt,
+            'sync_status': 'synced',
+          },
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushUpdatedLessons() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'lessons',
+      where: "sync_status = 'pending_update' AND remote_id IS NOT NULL",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      try {
+        final updated = await lessonsApi.update(
+          remoteId: row['remote_id'] as int,
+          subject: _effectiveLessonSubject(
+              row['subject'] as String?, row['date'] as String),
+        );
+        await db.update(
+          'lessons',
+          {
+            'sync_status': 'synced',
+            'server_updated_at': updated.updatedAt,
+          },
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushDeletedLessons() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'lessons',
+      columns: ['id', 'remote_id'],
+      where: "sync_status = 'pending_delete'",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      final remoteId = row['remote_id'] as int?;
+      if (remoteId == null) {
+        await db.delete('lessons', where: 'id = ?', whereArgs: [row['id']]);
+        continue;
+      }
+      try {
+        await lessonsApi.delete(remoteId);
+        await db.delete('lessons', where: 'id = ?', whereArgs: [row['id']]);
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
   /// Push the day's daily_entries via the batch endpoint. One HTTP call per
   /// distinct date with at least one pending row. Server replaces all rows for
   /// each (student, habit, date) tuple in the payload, so absolute counts work.
-  Future<_PointsPushStats> _pushPendingPoints(Map<String, int> habitNameMap) async {
+  /// After a successful batch push for a date, also push the attendance roster
+  /// for that date (derived from positive counts on the attendance habit).
+  Future<_PointsPushStats> _pushPendingPoints(
+    Map<String, int> habitNameMap, {
+    int? attendanceHabitLocalId,
+  }) async {
     final db = await _db.database;
     final pending = await db.query(
       'daily_entries',
       where: "sync_status IN ('pending_create', 'pending_update')",
     );
     if (pending.isEmpty) {
-      return const _PointsPushStats(batchesPushed: 0, batchesFailed: 0, rowsSkipped: 0);
+      return const _PointsPushStats(
+          batchesPushed: 0, batchesFailed: 0, rowsSkipped: 0);
     }
 
     // local_student_id → server_student_id and local_habit_id → server_habit_id.
@@ -283,7 +591,16 @@ class SyncService {
     int batchesPushed = 0;
     int batchesFailed = 0;
     int rowsSkipped = 0;
+    int attendancePushed = 0;
+    int attendanceFailed = 0;
     final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    // Cache of date → lesson row for attendance push. Refreshed lazily.
+    Future<Map<String, Object?>?> lessonForDate(String date) async {
+      final rows = await db.query('lessons',
+          where: 'date = ?', whereArgs: [date], limit: 1);
+      return rows.isEmpty ? null : rows.first;
+    }
 
     for (final entry in byDate.entries) {
       final date = entry.key;
@@ -323,11 +640,50 @@ class SyncService {
         batchesFailed++;
         continue;
       }
+
+      // Attendance push for this date: every student with count > 0 on the
+      // attendance habit is marked attended; the others (in the lesson's
+      // roster on that date) are marked absent by the server.
+      if (attendanceHabitLocalId == null) continue;
+      final lesson = await lessonForDate(date);
+      final lessonRemoteId = lesson?['remote_id'] as int?;
+      if (lessonRemoteId == null) continue;
+      final attendedRows = await db.rawQuery(
+        '''
+        SELECT student_id FROM daily_entries
+        WHERE date = ? AND habit_id = ? AND count > 0
+        ''',
+        [date, attendanceHabitLocalId],
+      );
+      final attendedRemoteIds = <int>[];
+      for (final r in attendedRows) {
+        final remote = remoteStudentByLocal[r['student_id'] as int];
+        if (remote != null) attendedRemoteIds.add(remote);
+      }
+      try {
+        await attendanceApi.bulkMark(
+          lessonRemoteId: lessonRemoteId,
+          date: date,
+          studentIds: attendedRemoteIds,
+        );
+        await db.update(
+          'lessons',
+          {'attendance_pushed_at': nowIso},
+          where: 'id = ?',
+          whereArgs: [lesson!['id']],
+        );
+        attendancePushed++;
+      } on ApiException {
+        attendanceFailed++;
+        continue;
+      }
     }
     return _PointsPushStats(
       batchesPushed: batchesPushed,
       batchesFailed: batchesFailed,
       rowsSkipped: rowsSkipped,
+      attendancePushed: attendancePushed,
+      attendanceFailed: attendanceFailed,
     );
   }
 
@@ -483,8 +839,12 @@ class _PointsPushStats {
     required this.batchesPushed,
     required this.batchesFailed,
     required this.rowsSkipped,
+    this.attendancePushed = 0,
+    this.attendanceFailed = 0,
   });
   final int batchesPushed;
   final int batchesFailed;
   final int rowsSkipped;
+  final int attendancePushed;
+  final int attendanceFailed;
 }
