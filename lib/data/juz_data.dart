@@ -2,16 +2,16 @@
 // Each entry is (surahIndex, ayah) where that juz' starts.
 const List<({int surah, int ayah})> kJuzStarts = [
   (surah: 1, ayah: 1),   // Juz 1
-  (surah: 1, ayah: 142), // Juz 2
-  (surah: 1, ayah: 253), // Juz 3
-  (surah: 2, ayah: 92),  // Juz 4
+  (surah: 2, ayah: 142), // Juz 2
+  (surah: 2, ayah: 253), // Juz 3
+  (surah: 3, ayah: 92),  // Juz 4
   (surah: 4, ayah: 24),  // Juz 5
   (surah: 4, ayah: 148), // Juz 6
-  (surah: 5, ayah: 82),  // Juz 7
+  (surah: 5, ayah: 83),  // Juz 7
   (surah: 6, ayah: 111), // Juz 8
   (surah: 7, ayah: 88),  // Juz 9
   (surah: 8, ayah: 41),  // Juz 10
-  (surah: 9, ayah: 93),  // Juz 11
+  (surah: 9, ayah: 94),  // Juz 11
   (surah: 11, ayah: 6),  // Juz 12
   (surah: 12, ayah: 53), // Juz 13
   (surah: 15, ayah: 1),  // Juz 14
@@ -27,7 +27,7 @@ const List<({int surah, int ayah})> kJuzStarts = [
   (surah: 39, ayah: 32), // Juz 24
   (surah: 41, ayah: 47), // Juz 25
   (surah: 46, ayah: 1),  // Juz 26
-  (surah: 51, ayah: 31), // Juz 27
+  (surah: 51, ayah: 1),  // Juz 27
   (surah: 58, ayah: 1),  // Juz 28
   (surah: 67, ayah: 1),  // Juz 29
   (surah: 78, ayah: 1),  // Juz 30
