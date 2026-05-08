@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../bloc/auth_cubit.dart';
 
 class AppDrawer extends StatelessWidget {
 	const AppDrawer({super.key});
 
 	@override
 	Widget build(BuildContext context) {
+		final authCubit = context.read<AuthCubit>();
+		final user = context.select<AuthCubit, String?>((c) => c.state.user?.displayName);
 		return Directionality(
 			textDirection: TextDirection.rtl,
 			child: Drawer(
@@ -12,14 +17,24 @@ class AppDrawer extends StatelessWidget {
 					child: ListView(
 						padding: EdgeInsets.zero,
 						children: [
-							const DrawerHeader(
-								decoration: BoxDecoration(color: Colors.teal),
+							DrawerHeader(
+								decoration: const BoxDecoration(color: Colors.teal),
 								child: Align(
 									alignment: AlignmentDirectional.centerStart,
-									child: Text('نقاط الطلاب', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+									child: Column(
+										mainAxisAlignment: MainAxisAlignment.end,
+										crossAxisAlignment: CrossAxisAlignment.start,
+										children: [
+											const Text('نقاط الطلاب', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+											if (user != null) ...[
+												const SizedBox(height: 6),
+												Text(user, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+											],
+										],
+									),
 								),
 							),
-							_ListItem(icon: Icons.home, label: 'الرئيسية', routeName: '/'),
+							_ListItem(icon: Icons.home, label: 'الرئيسية', routeName: '/home'),
 							_ListItem(icon: Icons.people, label: 'الطلاب', routeName: '/students'),
 							_ListItem(icon: Icons.fact_check, label: 'العادات', routeName: '/habits'),
 							_ListItem(icon: Icons.today, label: 'تتبع النقاط لليوم', routeName: '/tracking'),
@@ -27,6 +42,14 @@ class AppDrawer extends StatelessWidget {
 							_ListItem(icon: Icons.menu_book, label: 'حفظ القرآن', routeName: '/quran'),
 							const Divider(),
 							_ListItem(icon: Icons.settings, label: 'الإعدادات', routeName: '/settings'),
+							ListTile(
+								leading: const Icon(Icons.logout, color: Colors.redAccent),
+								title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)),
+								onTap: () async {
+									Navigator.pop(context);
+									await authCubit.logout();
+								},
+							),
 						],
 					),
 				),
