@@ -8,6 +8,7 @@ class TrackingRepository {
 	Future<void> incrementHabitCount({required DateTime date, required int studentId, required int habitId}) async {
 		final db = await AppDatabase().database;
 		final dateStr = date.toIso8601String().substring(0, 10);
+		final nowIso = DateTime.now().toUtc().toIso8601String();
 		await db.transaction((txn) async {
 			// Get current habit points once per increment
 			final habitRows = await txn.query('habits', columns: ['points'], where: 'id = ?', whereArgs: [habitId], limit: 1);
@@ -22,6 +23,8 @@ class TrackingRepository {
 					'habit_id': habitId,
 					'count': 1,
 					'points_earned': habitPoints,
+					'sync_status': 'pending_create',
+					'last_modified': nowIso,
 				});
 			} else {
 				final count = (existing.first['count'] as int) + 1;
@@ -29,6 +32,8 @@ class TrackingRepository {
 				await txn.update('daily_entries', {
 					'count': count,
 					'points_earned': prevPoints + habitPoints,
+					'sync_status': _nextStatus(existing.first['sync_status'] as String?),
+					'last_modified': nowIso,
 				},
 					where: 'id = ?', whereArgs: [existing.first['id']]);
 			}
@@ -37,16 +42,27 @@ class TrackingRepository {
 
 	Future<void> saveEntries(List<DailyEntry> entries) async {
 		final db = await AppDatabase().database;
+		final nowIso = DateTime.now().toUtc().toIso8601String();
 		await db.transaction((txn) async {
 			for (final e in entries) {
 				final habitRows = await txn.query('habits', columns: ['points','decrease_points'], where: 'id = ?', whereArgs: [e.habitId], limit: 1);
 				final habitPoints = (habitRows.first['points'] as int);
 				final habitDecreasePoints = (habitRows.first['decrease_points'] as int? ?? habitPoints);
+				// Preserve existing sync state's "is this row already on the server?"
+				// flavor when overwriting via INSERT-OR-REPLACE.
+				final existing = await txn.query('daily_entries',
+					columns: ['sync_status'],
+					where: 'date = ? AND student_id = ? AND habit_id = ?',
+					whereArgs: [e.date, e.studentId, e.habitId], limit: 1);
+				final nextStatus =
+					_nextStatus(existing.isEmpty ? null : existing.first['sync_status'] as String?);
 				await txn.insert(
 					'daily_entries',
 					{
 						...e.toMap(),
 						'points_earned': (e.count >= 0 ? e.count * habitPoints : (-e.count) * -habitDecreasePoints),
+						'sync_status': nextStatus,
+						'last_modified': nowIso,
 					},
 					conflictAlgorithm: ConflictAlgorithm.replace,
 				);
@@ -57,6 +73,7 @@ class TrackingRepository {
 	Future<void> replaceDayEntries(DateTime date, Map<int, Map<int, int>> pointsByStudentHabit) async {
 		final db = await AppDatabase().database;
 		final d = date.toIso8601String().substring(0, 10);
+		final nowIso = DateTime.now().toUtc().toIso8601String();
 		await db.transaction((txn) async {
 			await txn.delete('daily_entries', where: 'date = ?', whereArgs: [d]);
 			for (final entry in pointsByStudentHabit.entries) {
@@ -72,10 +89,19 @@ class TrackingRepository {
 						'habit_id': habitId,
 						'count': points, // Store points as count for compatibility
 						'points_earned': points,
+						'sync_status': 'pending_create',
+						'last_modified': nowIso,
 					});
 				}
 			}
 		});
+	}
+
+	/// If the row was already on the server (sync_status='synced'), demote it to
+	/// 'pending_update'. New or already-pending rows stay 'pending_create'.
+	String _nextStatus(String? current) {
+		if (current == 'synced') return 'pending_update';
+		return current ?? 'pending_create';
 	}
 
 	Future<List<DailyEntry>> getEntriesForDate(DateTime date) async {

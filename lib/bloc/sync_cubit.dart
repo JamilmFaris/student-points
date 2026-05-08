@@ -40,7 +40,18 @@ class SyncCubit extends Cubit<SyncState> {
     emit(const SyncState.syncing());
     try {
       final result = await op();
-      emit(SyncState.success(result));
+      final pushFails = result.studentsPushFailed +
+          result.hifzPushFailed +
+          result.pointsBatchesFailed;
+      final unmapped = result.pointsRowsSkipped;
+      if (pushFails > 0) {
+        emit(SyncState.error('فشل رفع $pushFails عنصر إلى الخادم'));
+      } else if (unmapped > 0) {
+        emit(SyncState.error(
+            '$unmapped سجل نقاط لم يُرفع — تحقّق من تطابق أسماء العادات مع الخادم'));
+      } else {
+        emit(SyncState.success(result));
+      }
     } on ApiException catch (e) {
       emit(SyncState.error(e.message));
     } catch (e) {

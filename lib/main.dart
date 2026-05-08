@@ -4,7 +4,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api/api_client.dart';
 import 'api/services/auth_api.dart';
+import 'api/services/habits_api.dart';
 import 'api/services/hifz_api.dart';
+import 'api/services/student_points_api.dart';
 import 'api/services/students_api.dart';
 import 'bloc/auth_cubit.dart';
 import 'bloc/students_cubit.dart';
@@ -28,9 +30,16 @@ void main() {
   final authApi = AuthApi(apiClient);
   final studentsApi = StudentsApi(apiClient);
   final hifzApi = HifzApi(apiClient);
+  final habitsApi = HabitsApi(apiClient);
+  final studentPointsApi = StudentPointsApi(apiClient);
 
   final authCubit = AuthCubit(authApi: authApi, tokenStorage: tokenStorage);
-  final syncService = SyncService(studentsApi: studentsApi, hifzApi: hifzApi);
+  final syncService = SyncService(
+    studentsApi: studentsApi,
+    hifzApi: hifzApi,
+    habitsApi: habitsApi,
+    studentPointsApi: studentPointsApi,
+  );
   final syncCubit = SyncCubit(syncService: syncService);
 
   apiClient.onUnauthenticated = authCubit.forceUnauthenticated;

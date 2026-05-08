@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 13,
+			version: 14,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -251,6 +251,15 @@ class AppDatabase {
 				if (!qmNames.contains('notes')) {
 					await db.execute('ALTER TABLE quran_memorization ADD COLUMN notes TEXT');
 				}
+			}
+			// v14: flip legacy daily_entries (created before backend integration) to
+			// pending_create so they get picked up by the first batch push. Rows that
+			// were inserted post-v12 by the new code path already carry last_modified;
+			// pre-existing rows have last_modified IS NULL.
+			if (oldVersion < 14) {
+				await db.execute(
+					"UPDATE daily_entries SET sync_status = 'pending_create' "
+					"WHERE last_modified IS NULL AND sync_status = 'synced'");
 			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');

@@ -31,6 +31,9 @@ class MemorizationRepository {
         // Ensure label is trimmed or null
         final label = (map['label'] as String?)?.trim();
         map['label'] = (label == null || label.isEmpty) ? null : label;
+        // Mark for upload to backend.
+        map['sync_status'] = 'pending_create';
+        map['last_modified'] = DateTime.now().toUtc().toIso8601String();
         return db.insert('quran_memorization', map, conflictAlgorithm: ConflictAlgorithm.abort);
     }
 

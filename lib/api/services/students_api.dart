@@ -31,4 +31,32 @@ class StudentsApi {
       throw toApiException(e);
     }
   }
+
+  /// `POST /api/students/`. Returns the created row (with `id`/`updated_at`).
+  /// Server-required fields (date_of_birth, father_name, mother_name, school) are
+  /// sent as empty strings when locally absent — matches DRF defaults rather than
+  /// failing the upload.
+  Future<StudentDto> create(StudentDto payload) async {
+    try {
+      final body = <String, dynamic>{
+        'first_name': payload.firstName,
+        'last_name': payload.lastName,
+        'father_name': payload.fatherName ?? '',
+        'mother_name': payload.motherName ?? '',
+        'date_of_birth': payload.dateOfBirth ?? '',
+        'school': payload.school ?? '',
+        if (payload.phoneNumber != null) 'phone_number': payload.phoneNumber,
+        if (payload.parentPhoneNumber != null)
+          'parent_phone_number': payload.parentPhoneNumber,
+        if (payload.birthPlace != null) 'birth_place': payload.birthPlace,
+      };
+      final res = await _dio.post('/api/students/', data: body);
+      if (res.statusCode == 201 && res.data is Map) {
+        return StudentDto.fromJson(Map<String, dynamic>.from(res.data as Map));
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل إنشاء الطالب');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
 }

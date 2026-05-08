@@ -29,4 +29,35 @@ class HifzApi {
       throw toApiException(e);
     }
   }
+
+  /// `POST /api/quran/hifz/`. [studentId] is the *server-side* id (resolved by
+  /// the caller from the local `students.remote_id` map).
+  Future<HifzDto> create({
+    required int studentId,
+    required int chapterIndex,
+    required int start,
+    required int end,
+    required String date,
+    String? label,
+    String? notes,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'student_id': studentId,
+        'chapter_index': chapterIndex,
+        'start': start,
+        'end': end,
+        'date': date,
+        if (label != null) 'label': label,
+        if (notes != null) 'notes': notes,
+      };
+      final res = await _dio.post('/api/quran/hifz/', data: body);
+      if (res.statusCode == 201 && res.data is Map) {
+        return HifzDto.fromJson(Map<String, dynamic>.from(res.data as Map));
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل إنشاء الحفظ');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
 }
