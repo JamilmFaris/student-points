@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/backup_service.dart';
 import 'widgets/app_drawer.dart';
+import 'widgets/sync_indicator.dart';
 
 class HomeScreen extends StatefulWidget {
 	const HomeScreen({super.key});
@@ -83,7 +84,10 @@ class _HomeScreenState extends State<HomeScreen> {
 		return Directionality(
 			textDirection: TextDirection.rtl,
 			child: Scaffold(
-				appBar: AppBar(title: Center(child: const Text('السلام عليكم ورحمة الله'))),
+				appBar: AppBar(
+				title: const Center(child: Text('السلام عليكم ورحمة الله')),
+				actions: const [SyncIndicator()],
+			),
 				drawer: const AppDrawer(),
 				body: SafeArea(
 					child: LayoutBuilder(

@@ -11,8 +11,10 @@ class MemorizedSection {
     final String? memorizedOn; // ISO yyyy-MM-dd
     /// Kind label: حفظ / مراجعة / تثبيت
     final String? label;
+    /// Freeform notes (mirrors server `notes` field).
+    final String? notes;
 
-    MemorizedSection({this.id, required this.studentId, required this.surahIndex, required this.ayahFrom, required this.ayahTo, required this.createdAt, this.memorizedOn, this.label});
+    MemorizedSection({this.id, required this.studentId, required this.surahIndex, required this.ayahFrom, required this.ayahTo, required this.createdAt, this.memorizedOn, this.label, this.notes});
 
     factory MemorizedSection.fromMap(Map<String, dynamic> map) {
         return MemorizedSection(
@@ -24,6 +26,7 @@ class MemorizedSection {
             createdAt: map['created_at'] as String,
             memorizedOn: map['memorized_on'] as String?,
             label: map['label'] as String?,
+            notes: map['notes'] as String?,
         );
     }
 
@@ -37,8 +40,7 @@ class MemorizedSection {
             'created_at': createdAt,
             'memorized_on': memorizedOn,
             'label': label,
+            'notes': notes,
         };
     }
 }
-
-

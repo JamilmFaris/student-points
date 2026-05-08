@@ -4,9 +4,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api/api_client.dart';
 import 'api/services/auth_api.dart';
+import 'api/services/hifz_api.dart';
+import 'api/services/students_api.dart';
 import 'bloc/auth_cubit.dart';
 import 'bloc/students_cubit.dart';
+import 'bloc/sync_cubit.dart';
 import 'repositories/student_repository.dart';
+import 'services/sync_service.dart';
 import 'services/token_storage.dart';
 import 'ui/habits_screen.dart';
 import 'ui/home_screen.dart';
@@ -22,21 +26,31 @@ void main() {
   final tokenStorage = TokenStorage();
   final apiClient = ApiClient(tokenStorage: tokenStorage);
   final authApi = AuthApi(apiClient);
+  final studentsApi = StudentsApi(apiClient);
+  final hifzApi = HifzApi(apiClient);
+
   final authCubit = AuthCubit(authApi: authApi, tokenStorage: tokenStorage);
+  final syncService = SyncService(studentsApi: studentsApi, hifzApi: hifzApi);
+  final syncCubit = SyncCubit(syncService: syncService);
+
   apiClient.onUnauthenticated = authCubit.forceUnauthenticated;
 
-  runApp(MyApp(authCubit: authCubit));
+  runApp(MyApp(authCubit: authCubit, syncCubit: syncCubit));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, required this.authCubit});
+  const MyApp({super.key, required this.authCubit, required this.syncCubit});
 
   final AuthCubit authCubit;
+  final SyncCubit syncCubit;
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider.value(
-      value: authCubit,
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: authCubit),
+        BlocProvider.value(value: syncCubit),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'نقاط الطلاب',
@@ -48,6 +62,18 @@ class MyApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('ar')],
+        builder: (context, child) {
+          // Trigger a full pull whenever auth flips to authenticated. Sits at the
+          // MaterialApp builder so it runs regardless of which screen is mounted.
+          return BlocListener<AuthCubit, AuthState>(
+            listenWhen: (prev, curr) =>
+                prev.status != AuthStatus.authenticated &&
+                curr.status == AuthStatus.authenticated,
+            listener: (context, _) =>
+                context.read<SyncCubit>().performLoginSync(),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         home: const _AuthGate(),
         routes: {
           '/login': (_) => const LoginScreen(),
@@ -68,7 +94,6 @@ class MyApp extends StatelessWidget {
 }
 
 /// Routes between Splash / Home / Login based on the current auth state.
-/// Splash performs the initial token-restore call.
 class _AuthGate extends StatelessWidget {
   const _AuthGate();
 

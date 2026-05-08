@@ -459,6 +459,7 @@ Future<void> _addMemorizedSection(BuildContext context, Student student) async {
         createdAt: DateTime.now().toIso8601String(),
         memorizedOn: toIsoDate(result.date),
         label: result.label,
+        notes: result.notes,
     ));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الحفظ')));
 }
@@ -469,13 +470,15 @@ class _MemResult {
     final int ayahTo;
     final DateTime date;
     final String? label;
-    _MemResult(this.surahIndex, this.ayahFrom, this.ayahTo, this.date, this.label);
+    final String? notes;
+    _MemResult(this.surahIndex, this.ayahFrom, this.ayahTo, this.date, this.label, this.notes);
 }
 
 Future<_MemResult?> _promptMemorization(BuildContext context) async {
     int surahIndex = 1;
     final fromController = TextEditingController();
     final toController = TextEditingController();
+    final notesController = TextEditingController();
     DateTime date = DateTime.now();
     String? label;
 
@@ -583,6 +586,12 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                                 ],
                                             ),
                                         ),
+                                        const SizedBox(height: 8),
+                                        TextField(
+                                            controller: notesController,
+                                            decoration: const InputDecoration(labelText: 'ملاحظات'),
+                                            maxLines: 2,
+                                        ),
                                     ],
                                 ),
                             ),
@@ -595,12 +604,14 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(err)));
                                             return;
                                         }
+                                        final notesText = notesController.text.trim();
                                         Navigator.pop(ctx, _MemResult(
                                             surahIndex,
                                             int.parse(fromController.text.trim()),
                                             int.parse(toController.text.trim()),
                                             DateTime(date.year, date.month, date.day),
                                             label ?? 'حفظ',
+                                            notesText.isEmpty ? null : notesText,
                                         ));
                                     },
                                     child: const Text('حفظ'),
@@ -687,6 +698,7 @@ Future<void> _addMultipleMemorizedSections(BuildContext context, Student student
     DateTime date = DateTime.now();
     String? label = 'حفظ';
     final searchController = TextEditingController();
+    final notesController = TextEditingController();
 
     final result = await showModalBottomSheet<bool>(
         context: context,
@@ -770,6 +782,12 @@ Future<void> _addMultipleMemorizedSections(BuildContext context, Student student
                                                     ),
                                                 ],
                                             ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        TextField(
+                                            controller: notesController,
+                                            decoration: const InputDecoration(labelText: 'ملاحظات'),
+                                            maxLines: 2,
                                         ),
                                         const SizedBox(height: 12),
                                         DefaultTabController(
@@ -874,7 +892,13 @@ Future<void> _addMultipleMemorizedSections(BuildContext context, Student student
                 ),
             );
         },
-    ).whenComplete(() => searchController.dispose());
+    ).whenComplete(() {
+        searchController.dispose();
+    });
+
+    final notesText = notesController.text.trim();
+    final notesValue = notesText.isEmpty ? null : notesText;
+    notesController.dispose();
 
     if (result != true || (selectedSurahs.isEmpty && selectedJuzs.isEmpty)) return;
 
@@ -896,6 +920,7 @@ Future<void> _addMultipleMemorizedSections(BuildContext context, Student student
                 createdAt: DateTime.now().toIso8601String(),
                 memorizedOn: memorizedOn,
                 label: lbl,
+                notes: notesValue,
             ));
             added++;
         }
@@ -911,6 +936,7 @@ Future<void> _addMultipleMemorizedSections(BuildContext context, Student student
                 createdAt: DateTime.now().toIso8601String(),
                 memorizedOn: memorizedOn,
                 label: lbl,
+                notes: notesValue,
             ));
             added++;
         }
@@ -939,13 +965,26 @@ class _MemTabList extends StatelessWidget {
             itemBuilder: (_, i) {
                 final m = items[i];
                 final dateText = (m.memorizedOn ?? (m.createdAt.length >= 10 ? m.createdAt.substring(0, 10) : m.createdAt));
+                final notes = (m.notes ?? '').trim();
                 return Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     child: ListTile(
                         leading: CircleAvatar(child: Text('${m.surahIndex}')),
                         title: Text(surahNameByIndex(m.surahIndex)),
-                        subtitle: Text('من الآية ${m.ayahFrom} إلى الآية ${m.ayahTo} • التاريخ: $dateText'),
+                        subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                                Text('من الآية ${m.ayahFrom} إلى الآية ${m.ayahTo} • التاريخ: $dateText'),
+                                if (notes.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                        notes,
+                                        style: const TextStyle(fontStyle: FontStyle.italic),
+                                    ),
+                                ],
+                            ],
+                        ),
                         trailing: IconButton(
                             tooltip: 'حذف',
                             icon: const Icon(Icons.delete),

@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 12,
+			version: 13,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -244,6 +244,14 @@ class AppDatabase {
 				''');
 				await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status)');
 			}
+			// v13: freeform notes on quran_memorization (mirrors server `notes` field).
+			if (oldVersion < 13) {
+				final cols = await db.rawQuery('PRAGMA table_info(quran_memorization)');
+				final qmNames = cols.map((e) => e['name'] as String).toSet();
+				if (!qmNames.contains('notes')) {
+					await db.execute('ALTER TABLE quran_memorization ADD COLUMN notes TEXT');
+				}
+			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
 			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
@@ -324,6 +332,9 @@ class AppDatabase {
 					}
 					if (!qmNames.contains('label')) {
 						await db.execute('ALTER TABLE quran_memorization ADD COLUMN label TEXT');
+					}
+					if (!qmNames.contains('notes')) {
+						await db.execute('ALTER TABLE quran_memorization ADD COLUMN notes TEXT');
 					}
 					// Ensure student_notes table exists (defensive)
 					await db.execute('''
