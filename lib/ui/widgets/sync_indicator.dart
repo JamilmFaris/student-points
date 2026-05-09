@@ -34,9 +34,24 @@ class SyncIndicator extends StatelessWidget {
             );
           case SyncStatus.error:
             return IconButton(
-              tooltip: state.errorMessage ?? 'فشل المزامنة',
+              tooltip: 'فشل المزامنة',
               icon: const Icon(Icons.sync_problem, color: Colors.amberAccent),
-              onPressed: () => cubit.performDeltaSync(),
+              onPressed: () {
+                if (state.errorMessage != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.errorMessage!),
+                      duration: const Duration(seconds: 6),
+                      action: SnackBarAction(
+                        label: 'إعادة المحاولة',
+                        onPressed: () => cubit.performDeltaSync(),
+                      ),
+                    ),
+                  );
+                } else {
+                  cubit.performDeltaSync();
+                }
+              },
             );
           case SyncStatus.idle:
           case SyncStatus.success:

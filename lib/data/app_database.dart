@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 15,
+			version: 16,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -76,7 +76,9 @@ class AppDatabase {
 						decrease_points INTEGER NOT NULL DEFAULT 0,
 						allow_negative INTEGER NOT NULL DEFAULT 0,
 						once_per_day INTEGER NOT NULL DEFAULT 0,
-						sort_order INTEGER NOT NULL DEFAULT 0
+						sort_order INTEGER NOT NULL DEFAULT 0,
+						remote_id INTEGER,
+						sync_status TEXT NOT NULL DEFAULT 'pending_create'
 					);
 				''');
 				await db.execute('''
@@ -303,6 +305,19 @@ class AppDatabase {
 					});
 				}
 			}
+			// v16: habits now sync to backend — add remote_id and sync_status.
+			// Existing habits are marked pending_create so they upload on next sync.
+			if (oldVersion < 16) {
+				final cols = await db.rawQuery('PRAGMA table_info(habits)');
+				final hNames = cols.map((e) => e['name'] as String).toSet();
+				if (!hNames.contains('remote_id')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN remote_id INTEGER');
+				}
+				if (!hNames.contains('sync_status')) {
+					await db.execute("ALTER TABLE habits ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending_create'");
+					await db.execute("UPDATE habits SET sync_status = 'pending_create' WHERE sync_status IS NULL");
+				}
+			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
 			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
@@ -330,6 +345,13 @@ class AppDatabase {
 				}
 				if (!names.contains('sort_order')) {
 					await db.execute('ALTER TABLE habits ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+				}
+				if (!names.contains('remote_id')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN remote_id INTEGER');
+				}
+				if (!names.contains('sync_status')) {
+					await db.execute("ALTER TABLE habits ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending_create'");
+					await db.execute("UPDATE habits SET sync_status = 'pending_create' WHERE sync_status IS NULL");
 				}
 				final colsStudents = await db.rawQuery('PRAGMA table_info(students)');
 				final sNames = colsStudents.map((e) => e['name'] as String).toSet();

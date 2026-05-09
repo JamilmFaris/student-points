@@ -25,4 +25,55 @@ class HabitsApi {
       throw toApiException(e);
     }
   }
+
+  /// `POST /api/habits/`. Creates a new habit.
+  Future<HabitDto> create(String name, int points, int minusPoints) async {
+    try {
+      final body = {
+        'name': name,
+        'description': name,
+        'points': points,
+        'minusPoints': minusPoints,
+      };
+      final res = await _dio.post('/api/habits/', data: body);
+      if (res.statusCode == 201 && res.data is Map) {
+        return HabitDto.fromJson(Map<String, dynamic>.from(res.data as Map));
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل إنشاء العادة');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
+  /// `PATCH /api/habits/{id}/`. Updates an existing habit.
+  Future<HabitDto> update(int remoteId, String name, int points, int minusPoints) async {
+    try {
+      final body = {
+        'name': name,
+        'description': name,
+        'points': points,
+        'minusPoints': minusPoints,
+      };
+      final res = await _dio.patch('/api/habits/$remoteId/', data: body);
+      if ((res.statusCode == 200 || res.statusCode == 202) && res.data is Map) {
+        return HabitDto.fromJson(Map<String, dynamic>.from(res.data as Map));
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل تحديث العادة');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
+  /// `DELETE /api/habits/{id}/`. Deletes a habit.
+  Future<void> delete(int remoteId) async {
+    try {
+      final res = await _dio.delete('/api/habits/$remoteId/');
+      if (res.statusCode == 204 || res.statusCode == 200 || res.statusCode == 404) {
+        return;
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل حذف العادة');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
 }

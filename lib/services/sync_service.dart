@@ -21,6 +21,12 @@ class SyncResult {
     this.studentsUpdateFailed = 0,
     this.studentsServerDeleted = 0,
     this.studentsDeleteFailed = 0,
+    this.habitsPushed = 0,
+    this.habitsPushFailed = 0,
+    this.habitsUpdated = 0,
+    this.habitsUpdateFailed = 0,
+    this.habitsServerDeleted = 0,
+    this.habitsDeleteFailed = 0,
     this.hifzPushed = 0,
     this.hifzPushFailed = 0,
     this.hifzPushSkipped = 0,
@@ -44,22 +50,29 @@ class SyncResult {
     this.hifzPulled = 0,
     this.hifzDeleted = 0,
     this.skippedHifz = 0,
+    this.failedHifzDetails = const {},
   });
 
   // Push: create.
   final int studentsPushed;
   final int studentsPushFailed;
+  final int habitsPushed;
+  final int habitsPushFailed;
   final int hifzPushed;
   final int hifzPushFailed;
   final int hifzPushSkipped;        // parent student not synced yet
   // Push: update.
   final int studentsUpdated;
   final int studentsUpdateFailed;
+  final int habitsUpdated;
+  final int habitsUpdateFailed;
   final int hifzUpdated;
   final int hifzUpdateFailed;
   // Push: delete (server-side success).
   final int studentsServerDeleted;
   final int studentsDeleteFailed;
+  final int habitsServerDeleted;
+  final int habitsDeleteFailed;
   final int hifzServerDeleted;
   final int hifzDeleteFailed;
   // Push: lessons.
@@ -82,6 +95,8 @@ class SyncResult {
   final int hifzPulled;
   final int hifzDeleted;
   final int skippedHifz;
+  // Error details.
+  final Map<int, String> failedHifzDetails;  // local id -> error message
 }
 
 class SyncService {
@@ -137,6 +152,9 @@ class SyncService {
     final createStudents = await _pushPendingStudents();
     final updateStudents = await _pushUpdatedStudents();
     final deleteStudents = await _pushDeletedStudents();
+    final createHabits = await _pushPendingHabits();
+    final updateHabits = await _pushUpdatedHabits();
+    final deleteHabits = await _pushDeletedHabits();
     final createHifz = await _pushPendingHifz();
     final updateHifz = await _pushUpdatedHifz();
     final deleteHifz = await _pushDeletedHifz();
@@ -168,6 +186,12 @@ class SyncService {
       studentsUpdateFailed: updateStudents.failed,
       studentsServerDeleted: deleteStudents.pushed,
       studentsDeleteFailed: deleteStudents.failed,
+      habitsPushed: createHabits.pushed,
+      habitsPushFailed: createHabits.failed,
+      habitsUpdated: updateHabits.pushed,
+      habitsUpdateFailed: updateHabits.failed,
+      habitsServerDeleted: deleteHabits.pushed,
+      habitsDeleteFailed: deleteHabits.failed,
       hifzPushed: createHifz.pushed,
       hifzPushFailed: createHifz.failed,
       hifzPushSkipped: createHifz.skipped,
@@ -191,6 +215,7 @@ class SyncService {
       hifzPulled: hifzStats.pulled,
       hifzDeleted: hifzStats.deleted,
       skippedHifz: hifzStats.skipped,
+      failedHifzDetails: createHifz.failureDetails,
     );
   }
 
@@ -285,6 +310,7 @@ class SyncService {
     int pushed = 0;
     int failed = 0;
     int skipped = 0;
+    final failureDetails = <int, String>{};
     for (final row in rows) {
       final localStudentId = row['student_id'] as int;
       final remoteStudentId = remoteByLocal[localStudentId];
@@ -293,15 +319,22 @@ class SyncService {
         continue;
       }
       try {
+        final surahIndex = row['surah_index'] as int;
+        final ayahFrom = row['ayah_from'] as int;
+        final ayahTo = row['ayah_to'] as int;
+        final date = _toServerDate(row['memorized_on'] as String?,
+            row['created_at'] as String?);
+        final label = row['label'] as String?;
+        final notes = row['notes'] as String?;
+
         final created = await hifzApi.create(
           studentId: remoteStudentId,
-          chapterIndex: row['surah_index'] as int,
-          start: row['ayah_from'] as int,
-          end: row['ayah_to'] as int,
-          date: _toServerDate(row['memorized_on'] as String?,
-              row['created_at'] as String?),
-          label: row['label'] as String?,
-          notes: row['notes'] as String?,
+          chapterIndex: surahIndex,
+          start: ayahFrom,
+          end: ayahTo,
+          date: date,
+          label: label,
+          notes: notes,
         );
         await db.update(
           'quran_memorization',
@@ -314,12 +347,17 @@ class SyncService {
           whereArgs: [row['id']],
         );
         pushed++;
-      } on ApiException {
+      } on ApiException catch (e) {
+        final hifzLocalId = row['id'] as int;
+        final surahIndex = row['surah_index'] as int;
+        final ayahFrom = row['ayah_from'] as int;
+        final ayahTo = row['ayah_to'] as int;
+        failureDetails[hifzLocalId] = 'Student ID: $remoteStudentId, Surah: $surahIndex, Ayah: $ayahFrom-$ayahTo | Error: ${e.message}';
         failed++;
         continue;
       }
     }
-    return _PushStats(pushed: pushed, failed: failed, skipped: skipped);
+    return _PushStats(pushed: pushed, failed: failed, skipped: skipped, failureDetails: failureDetails);
   }
 
   Future<_PushStats> _pushUpdatedStudents() async {
@@ -375,6 +413,97 @@ class SyncService {
       try {
         await studentsApi.delete(remoteId);
         await db.delete('students', where: 'id = ?', whereArgs: [row['id']]);
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushPendingHabits() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'habits',
+      where: 'remote_id IS NULL',
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      try {
+        final created = await habitsApi.create(
+          row['name'] as String,
+          row['points'] as int,
+          row['decrease_points'] as int,
+        );
+        await db.update(
+          'habits',
+          {
+            'remote_id': created.id,
+            'sync_status': 'synced',
+          },
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushUpdatedHabits() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'habits',
+      where: "sync_status = 'pending_update' AND remote_id IS NOT NULL",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      try {
+        await habitsApi.update(
+          row['remote_id'] as int,
+          row['name'] as String,
+          row['points'] as int,
+          row['decrease_points'] as int,
+        );
+        await db.update(
+          'habits',
+          {'sync_status': 'synced'},
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        pushed++;
+      } on ApiException {
+        failed++;
+        continue;
+      }
+    }
+    return _PushStats(pushed: pushed, failed: failed);
+  }
+
+  Future<_PushStats> _pushDeletedHabits() async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'habits',
+      columns: ['id', 'remote_id'],
+      where: "sync_status = 'pending_delete'",
+    );
+    int pushed = 0;
+    int failed = 0;
+    for (final row in rows) {
+      final remoteId = row['remote_id'] as int?;
+      if (remoteId == null) {
+        await db.delete('habits', where: 'id = ?', whereArgs: [row['id']]);
+        continue;
+      }
+      try {
+        await habitsApi.delete(remoteId);
+        await db.delete('habits', where: 'id = ?', whereArgs: [row['id']]);
         pushed++;
       } on ApiException {
         failed++;
@@ -836,10 +965,16 @@ class _MergeStats {
 }
 
 class _PushStats {
-  const _PushStats({required this.pushed, required this.failed, this.skipped = 0});
+  const _PushStats({
+    required this.pushed,
+    required this.failed,
+    this.skipped = 0,
+    this.failureDetails = const {},
+  });
   final int pushed;
   final int failed;
   final int skipped;
+  final Map<int, String> failureDetails;
 }
 
 class _PointsPushStats {
