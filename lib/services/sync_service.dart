@@ -246,6 +246,10 @@ class SyncService {
             'remote_id': created.id,
             'server_updated_at': created.updatedAt,
             'sync_status': 'synced',
+            'father_name': created.fatherName,
+            'mother_name': created.motherName,
+            'date_of_birth': created.dateOfBirth,
+            'school_name': created.school,
           },
           where: 'id = ?',
           whereArgs: [row['id']],
@@ -335,6 +339,10 @@ class SyncService {
           {
             'sync_status': 'synced',
             'server_updated_at': updated.updatedAt,
+            'father_name': updated.fatherName,
+            'mother_name': updated.motherName,
+            'date_of_birth': updated.dateOfBirth,
+            'school_name': updated.school,
           },
           where: 'id = ?',
           whereArgs: [row['id']],
@@ -696,12 +704,12 @@ class SyncService {
       id: 0, // ignored on POST
       firstName: firstName,
       lastName: lastName,
-      fatherName: row['father_name'] as String?,
-      motherName: row['mother_name'] as String?,
-      dateOfBirth: row['date_of_birth'] as String?,
+      fatherName: (row['father_name'] as String?) ?? 'والد',
+      motherName: (row['mother_name'] as String?) ?? 'والدة',
+      dateOfBirth: (row['date_of_birth'] as String?) ?? '2010-01-01',
       phoneNumber: row['phone_number'] as String?,
       birthPlace: row['birth_place'] as String?,
-      school: row['school_name'] as String?,
+      school: (row['school_name'] as String?) ?? 'مدرسة',
     );
   }
 
