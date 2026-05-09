@@ -48,6 +48,9 @@ class AppDrawer extends StatelessWidget {
 								onTap: () async {
 									Navigator.pop(context);
 									await authCubit.logout();
+									if (context.mounted) {
+										Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+									}
 								},
 							),
 						],
