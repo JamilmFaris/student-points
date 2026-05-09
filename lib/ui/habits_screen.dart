@@ -63,7 +63,29 @@ class HabitsScreen extends StatelessWidget {
 												),
 												IconButton(
 													icon: const Icon(Icons.delete),
-													onPressed: () => context.read<HabitsCubit>().deleteHabit(h.id!),
+													onPressed: () {
+														showDialog(
+															context: context,
+															builder: (context) => AlertDialog(
+																title: const Text('حذف العادة'),
+																content: const Text('هل أنت متأكد من حذف هذه العادة؟ سيتم حذفها بعد المزامنة.'),
+																actions: [
+																	TextButton(
+																		onPressed: () => Navigator.pop(context),
+																		child: const Text('إلغاء'),
+																	),
+																	TextButton(
+																		onPressed: () {
+																			Navigator.pop(context);
+																			context.read<HabitsCubit>().deleteHabit(h.id!);
+																			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف العادة. سيتم مزامنة التغييرات في المزامنة التالية.')));
+																		},
+																		child: const Text('حذف', style: TextStyle(color: Colors.red)),
+																	),
+																],
+															),
+														);
+													},
 												),
 											],
 										),
