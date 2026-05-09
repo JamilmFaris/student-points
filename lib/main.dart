@@ -80,19 +80,14 @@ class MyApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('ar')],
-        builder: (context, child) {
-          // Trigger a full pull whenever auth flips to authenticated. Sits at the
-          // MaterialApp builder so it runs regardless of which screen is mounted.
-          return BlocListener<AuthCubit, AuthState>(
-            listenWhen: (prev, curr) =>
-                prev.status != AuthStatus.authenticated &&
-                curr.status == AuthStatus.authenticated,
-            listener: (context, _) =>
-                context.read<SyncCubit>().performLoginSync(),
-            child: child ?? const SizedBox.shrink(),
-          );
-        },
-        home: const _AuthGate(),
+        home: BlocListener<AuthCubit, AuthState>(
+          listenWhen: (prev, curr) =>
+              prev.status != AuthStatus.authenticated &&
+              curr.status == AuthStatus.authenticated,
+          listener: (context, _) =>
+              context.read<SyncCubit>().performLoginSync(),
+          child: const _AuthGate(),
+        ),
         routes: {
           '/login': (_) => const LoginScreen(),
           '/home': (_) => const HomeScreen(),

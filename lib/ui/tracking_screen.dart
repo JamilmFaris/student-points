@@ -75,32 +75,13 @@ class _LessonAppBarTitle extends StatelessWidget {
 	}
 
 	Future<void> _editSubject(BuildContext context, String current) async {
-		final controller = TextEditingController(text: current);
+		final cubit = context.read<TrackingCubit>();
 		final result = await showDialog<String>(
 			context: context,
-			builder: (ctx) => Directionality(
-				textDirection: TextDirection.rtl,
-				child: AlertDialog(
-					title: const Text('عنوان الدرس'),
-					content: TextField(
-						controller: controller,
-						autofocus: true,
-						decoration: const InputDecoration(labelText: 'مثال: درس الفقه'),
-					),
-					actions: [
-						TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-						FilledButton(
-							onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-							child: const Text('حفظ'),
-						),
-					],
-				),
-			),
+			builder: (ctx) => _EditSubjectDialog(initialValue: current),
 		);
-		controller.dispose();
 		if (result == null) return;
-		if (!context.mounted) return;
-		await context.read<TrackingCubit>().setLessonSubject(result);
+		await cubit.setLessonSubject(result);
 	}
 }
 
@@ -327,7 +308,11 @@ class _TrackingTableState extends State<_TrackingTable> {
 	Widget build(BuildContext context) {
 		return BlocBuilder<StudentsCubit, StudentsState>(builder: (context, sState) {
 			return BlocBuilder<HabitsCubit, HabitsState>(builder: (context, hState) {
-				return BlocBuilder<TrackingCubit, TrackingState>(builder: (context, tState) {
+				return BlocBuilder<TrackingCubit, TrackingState>(
+					buildWhen: (prev, curr) =>
+						prev.loading != curr.loading ||
+						prev.countsByStudentHabit != curr.countsByStudentHabit,
+					builder: (context, tState) {
 					if (sState.loading || hState.loading || tState.loading) {
 						return const Center(child: CircularProgressIndicator());
 					}
@@ -400,9 +385,10 @@ class _TrackingTableState extends State<_TrackingTable> {
 															children: [
 																for (int i = 0; i < students.length; i++)
 																	Row(
+																		key: ValueKey('row-${students[i].id}'),
 																		children: [
 																			for (final h in habits)
-																				Builder(builder: (context) {
+																				Builder(key: ValueKey('cell-${students[i].id}-${h.id}'), builder: (context) {
 																					final counts = tState.countsByStudentHabit[students[i].id] ?? {};
 																					final c = counts[h.id] ?? 0;
 																					
@@ -510,6 +496,55 @@ class _TrackingTableState extends State<_TrackingTable> {
 				});
 			});
 		});
+	}
+}
+
+class _EditSubjectDialog extends StatefulWidget {
+	const _EditSubjectDialog({required this.initialValue});
+	final String initialValue;
+
+	@override
+	State<_EditSubjectDialog> createState() => _EditSubjectDialogState();
+}
+
+class _EditSubjectDialogState extends State<_EditSubjectDialog> {
+	late final TextEditingController _controller;
+
+	@override
+	void initState() {
+		super.initState();
+		_controller = TextEditingController(text: widget.initialValue);
+	}
+
+	@override
+	void dispose() {
+		_controller.dispose();
+		super.dispose();
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		return Directionality(
+			textDirection: TextDirection.rtl,
+			child: AlertDialog(
+				title: const Text('عنوان الدرس'),
+				content: TextField(
+					controller: _controller,
+					autofocus: true,
+					decoration: const InputDecoration(labelText: 'مثال: درس الفقه'),
+				),
+				actions: [
+					TextButton(
+						onPressed: () => Navigator.pop(context),
+						child: const Text('إلغاء'),
+					),
+					FilledButton(
+						onPressed: () => Navigator.pop(context, _controller.text.trim()),
+						child: const Text('حفظ'),
+					),
+				],
+			),
+		);
 	}
 }
 
