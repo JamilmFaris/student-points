@@ -1,19 +1,35 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../models/lesson.dart';
+import '../repositories/lesson_repository.dart';
 import '../repositories/tracking_repository.dart';
 
 class TrackingState {
 	final DateTime date;
 	final Map<int, Map<int, int>> countsByStudentHabit;
+	final Lesson? lesson;
 	final bool loading;
 	final String? error;
 
-	TrackingState({required this.date, required this.countsByStudentHabit, this.loading = false, this.error});
+	TrackingState({
+		required this.date,
+		required this.countsByStudentHabit,
+		this.lesson,
+		this.loading = false,
+		this.error,
+	});
 
-	TrackingState copyWith({DateTime? date, Map<int, Map<int, int>>? countsByStudentHabit, bool? loading, String? error}) {
+	TrackingState copyWith({
+		DateTime? date,
+		Map<int, Map<int, int>>? countsByStudentHabit,
+		Lesson? lesson,
+		bool? loading,
+		String? error,
+	}) {
 		return TrackingState(
 			date: date ?? this.date,
 			countsByStudentHabit: countsByStudentHabit ?? this.countsByStudentHabit,
+			lesson: lesson ?? this.lesson,
 			loading: loading ?? this.loading,
 			error: error,
 		);
@@ -22,8 +38,11 @@ class TrackingState {
 
 class TrackingCubit extends Cubit<TrackingState> {
 	final TrackingRepository _repo;
-	TrackingCubit(this._repo)
-		: super(TrackingState(date: DateTime.now(), countsByStudentHabit: {}, loading: true)) {
+	final LessonRepository _lessonRepo;
+
+	TrackingCubit(this._repo, {LessonRepository? lessonRepo})
+		: _lessonRepo = lessonRepo ?? LessonRepository(),
+		  super(TrackingState(date: DateTime.now(), countsByStudentHabit: {}, loading: true)) {
 		load(DateTime.now());
 	}
 
@@ -31,7 +50,13 @@ class TrackingCubit extends Cubit<TrackingState> {
 		emit(state.copyWith(loading: true, date: date));
 		try {
 			final breakdown = await _repo.getDayBreakdown(date);
-			emit(state.copyWith(countsByStudentHabit: breakdown, loading: false, error: null));
+			final lesson = await _lessonRepo.ensureForDate(date);
+			emit(state.copyWith(
+				countsByStudentHabit: breakdown,
+				lesson: lesson,
+				loading: false,
+				error: null,
+			));
 		} catch (e) {
 			emit(state.copyWith(loading: false, error: e.toString()));
 		}
@@ -56,6 +81,20 @@ class TrackingCubit extends Cubit<TrackingState> {
 		await _repo.replaceDayEntries(state.date, state.countsByStudentHabit);
 	}
 
+	Future<void> setLessonSubject(String subject) async {
+		final lesson = state.lesson;
+		if (lesson?.id == null) return;
+		await _lessonRepo.updateSubject(lesson!.id!, subject);
+		emit(state.copyWith(
+			lesson: Lesson(
+				id: lesson.id,
+				date: lesson.date,
+				subject: subject,
+				remoteId: lesson.remoteId,
+			),
+		));
+	}
+
 	void setHabitValue(int studentId, int habitId, int value) {
 		final updated = _cloneCounts(state.countsByStudentHabit);
 		final studentMap = updated.putIfAbsent(studentId, () => {});
@@ -71,5 +110,3 @@ class TrackingCubit extends Cubit<TrackingState> {
 		return copy;
 	}
 }
-
-

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls e:/Projects/student-points/quran-lessons/api/)",
+      "Read(//e/Projects/student-points/quran-lessons/api/**)",
+      "Bash(Get-ChildItem -Path \"e:\\\\Projects\\\\student-points\\\\student_points\\\\\" -Directory | Select-Object Name)"
+    ]
+  }
+}

@@ -6,7 +6,8 @@ import '../models/memorized_section.dart';
 class MemorizationRepository {
     Future<List<MemorizedSection>> listForStudent(int studentId, {String? label}) async {
         final db = await AppDatabase().database;
-        final where = StringBuffer('student_id = ?');
+        final where = StringBuffer(
+            "student_id = ? AND (sync_status IS NULL OR sync_status != 'pending_delete')");
         final whereArgs = <Object?>[studentId];
         if (label != null && label.trim().isNotEmpty) {
             where.write(' AND label = ?');
@@ -31,12 +32,24 @@ class MemorizationRepository {
         // Ensure label is trimmed or null
         final label = (map['label'] as String?)?.trim();
         map['label'] = (label == null || label.isEmpty) ? null : label;
+        // Mark for upload to backend.
+        map['sync_status'] = 'pending_create';
+        map['last_modified'] = DateTime.now().toUtc().toIso8601String();
         return db.insert('quran_memorization', map, conflictAlgorithm: ConflictAlgorithm.abort);
     }
 
     Future<void> delete(int id) async {
         final db = await AppDatabase().database;
-        await db.delete('quran_memorization', where: 'id = ?', whereArgs: [id]);
+        final rows = await db.query('quran_memorization',
+            columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
+        if (rows.isEmpty || rows.first['remote_id'] == null) {
+            await db.delete('quran_memorization', where: 'id = ?', whereArgs: [id]);
+            return;
+        }
+        final now = DateTime.now().toUtc().toIso8601String();
+        await db.update('quran_memorization',
+            {'sync_status': 'pending_delete', 'last_modified': now},
+            where: 'id = ?', whereArgs: [id]);
     }
 }
 

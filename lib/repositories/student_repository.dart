@@ -5,7 +5,12 @@ import 'package:sqflite/sqflite.dart' as sqflite;
 class StudentRepository {
 	Future<List<Student>> getAll() async {
 		final db = await AppDatabase().database;
-		final rows = await db.query('students', orderBy: 'sort_order ASC, name COLLATE NOCASE');
+		// Hide rows tombstoned for server-side deletion until SyncService drains them.
+		final rows = await db.query(
+			'students',
+			where: "sync_status IS NULL OR sync_status != 'pending_delete'",
+			orderBy: 'sort_order ASC, name COLLATE NOCASE',
+		);
 		return rows.map((e) => Student.fromMap(e)).toList();
 	}
 
@@ -19,18 +24,52 @@ class StudentRepository {
 		}
 		// Compute next sort order = max + 1
 		final maxOrder = sqflite.Sqflite.firstIntValue(await db.rawQuery('SELECT COALESCE(MAX(sort_order), 0) FROM students')) ?? 0;
-		final toInsert = student.toMap()..remove('id')..['sort_order'] = maxOrder + 1;
+		final now = DateTime.now().toUtc().toIso8601String();
+		final toInsert = student.toMap()
+			..remove('id')
+			..['sort_order'] = maxOrder + 1
+			..['sync_status'] = 'pending_create'
+			..['last_modified'] = now;
 		return db.insert('students', toInsert);
 	}
 
 	Future<int> update(Student student) async {
 		final db = await AppDatabase().database;
-		return db.update('students', student.toMap()..remove('id'), where: 'id = ?', whereArgs: [student.id]);
+		final now = DateTime.now().toUtc().toIso8601String();
+		// If row already has a remote_id, mark pending_update so future push picks it up.
+		// New (unsynced) rows stay as pending_create.
+		final existing = await db.query('students',
+			columns: ['remote_id', 'sync_status'],
+			where: 'id = ?',
+			whereArgs: [student.id],
+			limit: 1);
+		String nextStatus = 'pending_create';
+		if (existing.isNotEmpty && existing.first['remote_id'] != null) {
+			nextStatus = 'pending_update';
+		} else if (existing.isNotEmpty &&
+			existing.first['sync_status'] == 'pending_create') {
+			nextStatus = 'pending_create';
+		}
+		final values = student.toMap()
+			..remove('id')
+			..['sync_status'] = nextStatus
+			..['last_modified'] = now;
+		return db.update('students', values, where: 'id = ?', whereArgs: [student.id]);
 	}
 
 	Future<int> delete(int id) async {
 		final db = await AppDatabase().database;
-		return db.delete('students', where: 'id = ?', whereArgs: [id]);
+		final rows = await db.query('students',
+			columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
+		if (rows.isEmpty || rows.first['remote_id'] == null) {
+			// Never made it to the server — hard delete locally.
+			return db.delete('students', where: 'id = ?', whereArgs: [id]);
+		}
+		// Tombstone so SyncService can DELETE on the server, then hard-remove locally.
+		final now = DateTime.now().toUtc().toIso8601String();
+		return db.update('students',
+			{'sync_status': 'pending_delete', 'last_modified': now},
+			where: 'id = ?', whereArgs: [id]);
 	}
 
 	Future<void> updateOrder(List<Student> students) async {

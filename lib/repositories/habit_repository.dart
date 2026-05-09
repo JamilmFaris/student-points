@@ -11,22 +11,49 @@ class HabitRepository {
 	Future<int> insert(Habit habit) async {
 		final db = await AppDatabase().database;
 		// If no sort order specified, put it at the end
+		late Habit habitToInsert;
 		if (habit.sortOrder == 0) {
 			final maxSortOrder = await _getMaxSortOrder();
-			final habitWithOrder = habit.copyWith(sortOrder: maxSortOrder + 1);
-			return db.insert('habits', habitWithOrder.toMap()..remove('id'));
+			habitToInsert = habit.copyWith(sortOrder: maxSortOrder + 1);
+		} else {
+			habitToInsert = habit;
 		}
-		return db.insert('habits', habit.toMap()..remove('id'));
+		// Mark new habits as pending_create for sync
+		final toInsert = habitToInsert.toMap()..remove('id')..['sync_status'] = 'pending_create';
+		return db.insert('habits', toInsert);
 	}
 
 	Future<int> update(Habit habit) async {
 		final db = await AppDatabase().database;
-		return db.update('habits', habit.toMap()..remove('id'), where: 'id = ?', whereArgs: [habit.id]);
+		final existing = await db.query('habits',
+			columns: ['remote_id', 'sync_status'],
+			where: 'id = ?',
+			whereArgs: [habit.id],
+			limit: 1);
+
+		String syncStatus = 'pending_create';
+		if (existing.isNotEmpty && existing.first['remote_id'] != null) {
+			syncStatus = 'pending_update';
+		} else if (existing.isNotEmpty && existing.first['sync_status'] == 'pending_create') {
+			syncStatus = 'pending_create';
+		}
+
+		final values = habit.toMap()..remove('id')..['sync_status'] = syncStatus;
+		return db.update('habits', values, where: 'id = ?', whereArgs: [habit.id]);
 	}
 
 	Future<int> delete(int id) async {
 		final db = await AppDatabase().database;
-		return db.delete('habits', where: 'id = ?', whereArgs: [id]);
+		final rows = await db.query('habits',
+			columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
+		if (rows.isEmpty || rows.first['remote_id'] == null) {
+			// Never made it to the server — hard delete locally.
+			return db.delete('habits', where: 'id = ?', whereArgs: [id]);
+		}
+		// Mark for server-side deletion, then hard-remove locally after sync.
+		return db.update('habits',
+			{'sync_status': 'pending_delete'},
+			where: 'id = ?', whereArgs: [id]);
 	}
 
 	Future<void> updateSortOrders(List<Habit> habits) async {
