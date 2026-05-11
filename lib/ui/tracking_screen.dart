@@ -36,7 +36,8 @@ class TrackingScreen extends StatelessWidget {
 								onPressed: () async {
 									await context.read<TrackingCubit>().saveAll();
 									ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ التعديلات')));
-								},
+									// ignore: use_build_context_synchronously
+																	},
 								label: const Text('حفظ'),
 								icon: const Icon(Icons.save),
 							);

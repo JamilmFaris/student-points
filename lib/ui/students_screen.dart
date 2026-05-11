@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/students_cubit.dart';
+import '../bloc/sync_cubit.dart';
 import '../models/student.dart';
 import '../repositories/tracking_repository.dart';
 import '../repositories/habit_repository.dart';
@@ -86,6 +87,7 @@ class StudentsScreen extends StatelessWidget {
                                                             grade: details.grade.trim().isEmpty ? null : details.grade.trim(),
 														),
 													);
+													// ignore: use_build_context_synchronously
 												}
 											},
 										),
@@ -202,29 +204,62 @@ class StudentsScreen extends StatelessWidget {
 		while (true) {
 			final result = await _promptNameForAdd(context);
 			if (result == null) return;
-			final name = result.name.trim();
-			if (name.isNotEmpty) {
-				await context.read<StudentsCubit>().addStudent(name);
+			final firstName = result.firstName.trim();
+			final secondName = result.secondName.trim();
+			if (firstName.isEmpty || secondName.isEmpty) {
+				// ignore: use_build_context_synchronously
+				ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب إدخال الاسم الأول والاسم الثاني'), duration: Duration(seconds: 3)));
+			} else {
+				final fullName = '$firstName $secondName';
+				await context.read<StudentsCubit>().addStudent(fullName);
+				// ignore: use_build_context_synchronously
+				ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الطالب')));
+				// ignore: use_build_context_synchronously
+				if (!result.addAnother) return;
 			}
-			if (!result.addAnother) return;
 		}
 	}
 
 	Future<_NameDialogResult?> _promptNameForAdd(BuildContext context) async {
-		final controller = TextEditingController(text: '');
+		final firstNameController = TextEditingController(text: '');
+		final secondNameController = TextEditingController(text: '');
 		return showDialog<_NameDialogResult>(
 			context: context,
 			builder: (context) => AlertDialog(
 				title: const Text('اسم الطالب'),
-				content: TextField(controller: controller, textDirection: TextDirection.rtl, autofocus: true),
+				content: Column(
+					mainAxisSize: MainAxisSize.min,
+					children: [
+						TextField(
+							controller: firstNameController,
+							decoration: const InputDecoration(
+								labelText: 'الاسم الأول',
+								hintText: 'مثال: محمد',
+								hintStyle: TextStyle(color: Colors.grey),
+							),
+							textDirection: TextDirection.rtl,
+							autofocus: true,
+						),
+						const SizedBox(height: 12),
+						TextField(
+							controller: secondNameController,
+							decoration: const InputDecoration(
+								labelText: 'الاسم الثاني',
+								hintText: 'مثال: عبدو',
+								hintStyle: TextStyle(color: Colors.grey),
+							),
+							textDirection: TextDirection.rtl,
+						),
+					],
+				),
 				actions: [
 					TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
 					TextButton(
-						onPressed: () => Navigator.pop(context, _NameDialogResult(controller.text, false)),
+						onPressed: () => Navigator.pop(context, _NameDialogResult(firstNameController.text, secondNameController.text, false)),
 						child: const Text('حفظ'),
 					),
 					TextButton(
-						onPressed: () => Navigator.pop(context, _NameDialogResult(controller.text, true)),
+						onPressed: () => Navigator.pop(context, _NameDialogResult(firstNameController.text, secondNameController.text, true)),
 						child: const Text('حفظ وإضافة آخر'),
 					),
 				],
@@ -234,10 +269,11 @@ class StudentsScreen extends StatelessWidget {
 }
 
 class _NameDialogResult {
-	final String name;
+	final String firstName;
+	final String secondName;
 	final bool addAnother;
 
-	_NameDialogResult(this.name, this.addAnother);
+	_NameDialogResult(this.firstName, this.secondName, this.addAnother);
 }
 
 class _StudentDetailsResult {
@@ -338,6 +374,7 @@ void _showStudentInfo(BuildContext context, Student s) {
                                                                 grade: details.grade.trim().isEmpty ? null : details.grade.trim(),
                                                             ),
                                                         );
+                                                        // ignore: use_build_context_synchronously
                                                     }
                                                 },
                                                 icon: const Icon(Icons.edit),
@@ -408,7 +445,13 @@ Future<String?> _openNativeContactPicker(BuildContext context) async {
 }
 
 Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Student? student, String? name, String? dateOfBirth, String? schoolName, String? fatherName, String? motherName, String? phoneNumber, String? birthPlace, String? grade}) async {
-    final nameController = TextEditingController(text: name ?? '');
+    final fullName = name ?? '';
+    final parts = fullName.trim().split(RegExp(r'\s+'));
+    final firstName = parts.isNotEmpty ? parts.first : '';
+    final secondName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+
+    final firstNameController = TextEditingController(text: firstName);
+    final secondNameController = TextEditingController(text: secondName);
     final dobController = TextEditingController(text: dateOfBirth ?? '');
     final schoolController = TextEditingController(text: schoolName ?? '');
     final fatherController = TextEditingController(text: fatherName ?? '');
@@ -451,7 +494,18 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stud
                 content: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                        TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم'), textDirection: TextDirection.rtl),
+                        TextField(
+                            controller: firstNameController,
+                            decoration: const InputDecoration(labelText: 'الاسم الأول'),
+                            textDirection: TextDirection.rtl,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                            controller: secondNameController,
+                            decoration: const InputDecoration(labelText: 'الاسم الثاني'),
+                            textDirection: TextDirection.rtl,
+                        ),
+                        const SizedBox(height: 12),
                         TextField(
                             controller: dobController,
                             decoration: InputDecoration(
@@ -497,7 +551,7 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stud
                 actions: [
                     TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
                     TextButton(onPressed: () => Navigator.pop(context, _StudentDetailsResult(
-                        nameController.text,
+                        '${firstNameController.text.trim()} ${secondNameController.text.trim()}'.trim(),
                         dobController.text,
                         schoolController.text,
                         fatherController.text,

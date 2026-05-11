@@ -54,8 +54,10 @@ class HabitsScreen extends StatelessWidget {
 																await context.read<HabitsCubit>().updateHabit(
 																	h.copyWith(name: result.$1, points: int.parse(result.$2), decreasePoints: int.parse(result.$3), allowNegative: result.$4, oncePerDay: result.$5),
 																);
+																// ignore: use_build_context_synchronously
 																ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث العادة')));
-															} catch (e) {
+																// ignore: use_build_context_synchronously
+																															} catch (e) {
 																print(e);
 															}
 														}
@@ -66,20 +68,19 @@ class HabitsScreen extends StatelessWidget {
 													onPressed: () {
 														showDialog(
 															context: context,
-															builder: (context) => AlertDialog(
+															builder: (dialogContext) => AlertDialog(
 																title: const Text('حذف العادة'),
-																content: const Text('هل أنت متأكد من حذف هذه العادة؟ سيتم حذفها بعد المزامنة.'),
+																content: const Text('هل أنت متأكد من حذف هذه العادة؟'),
 																actions: [
 																	TextButton(
-																		onPressed: () => Navigator.pop(context),
+																		onPressed: () => Navigator.pop(dialogContext),
 																		child: const Text('إلغاء'),
 																	),
 																	TextButton(
-																		onPressed: () {
-																			Navigator.pop(context);
-																			context.read<HabitsCubit>().deleteHabit(h.id!);
-																			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف العادة. سيتم مزامنة التغييرات في المزامنة التالية.')));
-																		},
+																		onPressed: () async {
+																			Navigator.pop(dialogContext);
+																			await context.read<HabitsCubit>().deleteHabit(h.id!);
+																																					},
 																		child: const Text('حذف', style: TextStyle(color: Colors.red)),
 																	),
 																],
