@@ -4,7 +4,7 @@ import '../models/habit.dart';
 class HabitRepository {
 	Future<List<Habit>> getAll() async {
 		final db = await AppDatabase().database;
-		final rows = await db.query('habits', orderBy: 'sort_order, name COLLATE NOCASE');
+		final rows = await db.query('habits', where: 'sync_status != ?', whereArgs: ['pending_delete'], orderBy: 'sort_order, name COLLATE NOCASE');
 		return rows.map((e) => Habit.fromMap(e)).toList();
 	}
 
