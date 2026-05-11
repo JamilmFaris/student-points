@@ -682,11 +682,9 @@ class SyncService {
     return _PushStats(pushed: pushed, failed: failed);
   }
 
-  /// Push the day's daily_entries via the batch endpoint. One HTTP call per
-  /// distinct date with at least one pending row. Server replaces all rows for
-  /// each (student, habit, date) tuple in the payload, so absolute counts work.
-  /// After a successful batch push for a date, also push the attendance roster
-  /// for that date (derived from positive counts on the attendance habit).
+  /// Push pending daily_entries as individual POST /api/student-points/ calls.
+  /// After all rows for a date are pushed, also push the attendance roster for
+  /// that date (derived from positive counts on the attendance habit).
   Future<_PointsPushStats> _pushPendingPoints(
     Map<String, int> habitNameMap, {
     int? attendanceHabitLocalId,
@@ -717,107 +715,94 @@ class SyncService {
       if (remoteId != null) remoteHabitByLocal[r['id'] as int] = remoteId;
     }
 
-    // Group pending rows by date. Track local row ids per group so we can
-    // mark them synced on success.
-    final byDate = <String, List<Map<String, Object?>>>{};
-    for (final row in pending) {
-      final date = row['date'] as String;
-      byDate.putIfAbsent(date, () => []).add(row);
-    }
-
-    int batchesPushed = 0;
-    int batchesFailed = 0;
+    int rowsPushed = 0;
+    int rowsFailed = 0;
     int rowsSkipped = 0;
     int attendancePushed = 0;
     int attendanceFailed = 0;
     final nowIso = DateTime.now().toUtc().toIso8601String();
+    // Dates that had at least one row successfully pushed — used for attendance.
+    final pushedDates = <String>{};
 
-    // Cache of date → lesson row for attendance push. Refreshed lazily.
+    // Cache of date → lesson row for attendance push.
     Future<Map<String, Object?>?> lessonForDate(String date) async {
       final rows = await db.query('lessons',
           where: 'date = ?', whereArgs: [date], limit: 1);
       return rows.isEmpty ? null : rows.first;
     }
 
-    for (final entry in byDate.entries) {
-      final date = entry.key;
-      final rows = entry.value;
-      final entries = <BatchPointEntry>[];
-      final pushableLocalIds = <int>[];
-      for (final row in rows) {
-        final remoteStudent = remoteStudentByLocal[row['student_id'] as int];
-        final remoteHabit = remoteHabitByLocal[row['habit_id'] as int];
-        if (remoteStudent == null || remoteHabit == null) {
-          rowsSkipped++;
-          continue;
-        }
-        final count = (row['count'] as int?) ?? 0;
-        // Local stores a signed count: positive = "+" taps, negative = "−" taps.
-        final plus = count > 0 ? count : 0;
-        final minus = count < 0 ? -count : 0;
-        entries.add(BatchPointEntry(
-          studentId: remoteStudent,
-          habitId: remoteHabit,
-          plusCount: plus,
-          minusCount: minus,
-        ));
-        pushableLocalIds.add(row['id'] as int);
+    for (final row in pending) {
+      final remoteStudent = remoteStudentByLocal[row['student_id'] as int];
+      final remoteHabit = remoteHabitByLocal[row['habit_id'] as int];
+      if (remoteStudent == null || remoteHabit == null) {
+        rowsSkipped++;
+        continue;
       }
-      if (entries.isEmpty) continue;
+      final count = (row['count'] as int?) ?? 0;
+      if (count == 0) {
+        rowsSkipped++;
+        continue;
+      }
       try {
-        await studentPointsApi.batchPush(date: date, entries: entries);
+          await studentPointsApi.create(
+            studentId: remoteStudent,
+            habitId: remoteHabit,
+            isMinus: count < 0,
+            date: row['date'] as String,
+          );
         await db.update(
           'daily_entries',
           {'sync_status': 'synced', 'server_updated_at': nowIso},
-          where: 'id IN (${List.filled(pushableLocalIds.length, '?').join(',')})',
-          whereArgs: pushableLocalIds,
-        );
-        batchesPushed++;
-      } on ApiException {
-        batchesFailed++;
-        continue;
-      }
-
-      // Attendance push for this date: every student with count > 0 on the
-      // attendance habit is marked attended; the others (in the lesson's
-      // roster on that date) are marked absent by the server.
-      if (attendanceHabitLocalId == null) continue;
-      final lesson = await lessonForDate(date);
-      final lessonRemoteId = lesson?['remote_id'] as int?;
-      if (lessonRemoteId == null) continue;
-      final attendedRows = await db.rawQuery(
-        '''
-        SELECT student_id FROM daily_entries
-        WHERE date = ? AND habit_id = ? AND count > 0
-        ''',
-        [date, attendanceHabitLocalId],
-      );
-      final attendedRemoteIds = <int>[];
-      for (final r in attendedRows) {
-        final remote = remoteStudentByLocal[r['student_id'] as int];
-        if (remote != null) attendedRemoteIds.add(remote);
-      }
-      try {
-        await attendanceApi.bulkMark(
-          lessonRemoteId: lessonRemoteId,
-          date: date,
-          studentIds: attendedRemoteIds,
-        );
-        await db.update(
-          'lessons',
-          {'attendance_pushed_at': nowIso},
           where: 'id = ?',
-          whereArgs: [lesson!['id']],
+          whereArgs: [row['id']],
         );
-        attendancePushed++;
+        rowsPushed++;
+        pushedDates.add(row['date'] as String);
       } on ApiException {
-        attendanceFailed++;
-        continue;
+        rowsFailed++;
       }
     }
+
+    // Attendance push for each date that had successful point pushes.
+    if (attendanceHabitLocalId != null) {
+      for (final date in pushedDates) {
+        final lesson = await lessonForDate(date);
+        final lessonRemoteId = lesson?['remote_id'] as int?;
+        if (lessonRemoteId == null) continue;
+        final attendedRows = await db.rawQuery(
+          '''
+          SELECT student_id FROM daily_entries
+          WHERE date = ? AND habit_id = ? AND count > 0
+          ''',
+          [date, attendanceHabitLocalId],
+        );
+        final attendedRemoteIds = <int>[];
+        for (final r in attendedRows) {
+          final remote = remoteStudentByLocal[r['student_id'] as int];
+          if (remote != null) attendedRemoteIds.add(remote);
+        }
+        try {
+          await attendanceApi.bulkMark(
+            lessonRemoteId: lessonRemoteId,
+            date: date,
+            studentIds: attendedRemoteIds,
+          );
+          await db.update(
+            'lessons',
+            {'attendance_pushed_at': nowIso},
+            where: 'id = ?',
+            whereArgs: [lesson!['id']],
+          );
+          attendancePushed++;
+        } on ApiException {
+          attendanceFailed++;
+        }
+      }
+    }
+
     return _PointsPushStats(
-      batchesPushed: batchesPushed,
-      batchesFailed: batchesFailed,
+      batchesPushed: rowsPushed,
+      batchesFailed: rowsFailed,
       rowsSkipped: rowsSkipped,
       attendancePushed: attendancePushed,
       attendanceFailed: attendanceFailed,

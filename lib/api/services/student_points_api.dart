@@ -36,6 +36,32 @@ class StudentPointsApi {
   final ApiClient _client;
   Dio get _dio => _client.dio;
 
+  /// `POST /api/student-points/` — create a single point record.
+  Future<void> create({
+    required int studentId,
+    required int habitId,
+    required bool isMinus,
+    required String date, // YYYY-MM-DD
+    int? lessonId,
+  }) async {
+    try {
+      final res = await _dio.post(
+        '/api/student-points/',
+        data: {
+          'student': studentId,
+          'habit': habitId,
+          'isMinus': isMinus,
+          'date': date,
+          if (lessonId != null) 'lesson': lessonId,
+        },
+      );
+      if (res.statusCode == 201) return;
+      throw ApiException(extractDrfError(res) ?? 'فشل رفع النقطة');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
   /// `POST /api/student-points/batch/` — overwrite-semantics push of one
   /// day's points. Server replaces all rows for each (student, habit, date)
   /// tuple in the payload.
