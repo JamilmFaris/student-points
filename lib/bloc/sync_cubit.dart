@@ -34,6 +34,51 @@ class SyncCubit extends Cubit<SyncState> {
   Future<void> performLoginSync() => _run(syncService.performLoginSync);
   Future<void> performDeltaSync() => _run(syncService.performDeltaSync);
 
+  /// Clears local data (optionally pushing pending rows first) then does a
+  /// full pull from the server.
+  Future<void> performRestoreFromServer({bool syncFirst = false}) async {
+    if (_running) return;
+    _running = true;
+    emit(const SyncState.syncing());
+    try {
+      if (syncFirst) {
+        await syncService.performDeltaSync();
+      }
+      await syncService.clearAllLocalData();
+      final result = await syncService.performLoginSync();
+      final pushFails = result.studentsPushFailed +
+          result.studentsUpdateFailed +
+          result.studentsDeleteFailed +
+          result.habitsPushFailed +
+          result.habitsUpdateFailed +
+          result.habitsDeleteFailed +
+          result.hifzPushFailed +
+          result.hifzUpdateFailed +
+          result.hifzDeleteFailed +
+          result.lessonsPushFailed +
+          result.lessonsUpdateFailed +
+          result.lessonsDeleteFailed +
+          result.attendancePushFailed +
+          result.pointsBatchesFailed;
+      final unmapped = result.pointsRowsSkipped;
+      if (pushFails > 0) {
+        final details = _buildFailureDetails(result);
+        emit(SyncState.error('فشل رفع $pushFails عنصر إلى الخادم\n$details'));
+      } else if (unmapped > 0) {
+        emit(SyncState.error(
+            '$unmapped سجل نقاط لم يُرفع — تحقّق من تطابق أسماء العادات مع الخادم'));
+      } else {
+        emit(SyncState.success(result));
+      }
+    } on ApiException catch (e) {
+      emit(SyncState.error(e.message));
+    } catch (e) {
+      emit(SyncState.error(e.toString()));
+    } finally {
+      _running = false;
+    }
+  }
+
   Future<void> _run(Future<SyncResult> Function() op) async {
     if (_running) return;
     _running = true;

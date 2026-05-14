@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../bloc/sync_cubit.dart';
 import '../models/habit.dart';
 import '../repositories/habit_repository.dart';
 import '../services/app_mode.dart';
@@ -43,6 +47,127 @@ class _SettingsScreenState extends State<SettingsScreen> {
 			_resolvedAttendanceHabit = resolved;
 			_attendanceFromName = byName;
 		});
+	}
+
+	Future<void> _restoreFromServer() async {
+		final syncCubit = context.read<SyncCubit>();
+		final hasPending = await syncCubit.syncService.hasPendingData();
+
+		if (!mounted) return;
+
+		final choice = await _showRestoreDialog(hasPending);
+		if (choice == null) return;
+
+		// Start the sync/restore
+		final bool syncFirst = choice == 'sync';
+		syncCubit.performRestoreFromServer(syncFirst: syncFirst);
+
+		if (mounted) {
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text(syncFirst ? 'جاري المزامنة والاستعادة...' : 'جاري الاستعادة من الخادم...')),
+			);
+		}
+	}
+
+	Future<String?> _showRestoreDialog(bool hasPendingData) async {
+		if (hasPendingData) {
+			return showDialog<String?>(
+				context: context,
+				barrierDismissible: false,
+				builder: (_) {
+					int seconds = 5;
+					Timer? timer;
+					return StatefulBuilder(
+						builder: (ctx, setState) {
+							timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+								if (seconds > 0) {
+									setState(() => seconds--);
+								} else {
+									timer?.cancel();
+									timer = null;
+								}
+							});
+							final suffix = seconds > 0 ? ' ($seconds)' : '';
+							return Directionality(
+								textDirection: TextDirection.rtl,
+								child: AlertDialog(
+									title: const Text('⚠ بيانات غير مزامنة'),
+									content: const Text(
+										'توجد بيانات في التطبيق لم يتم رفعها إلى الخادم بعد.\n'
+										'اختر كيف تريد المتابعة — ستُفعَّل الأزرار خلال 5 ثوانٍ.',
+									),
+									actions: [
+										TextButton(
+											onPressed: () => Navigator.pop(ctx),
+											child: const Text('إلغاء'),
+										),
+										ElevatedButton.icon(
+											onPressed: seconds > 0 ? null : () => Navigator.pop(ctx, 'sync'),
+											icon: const Icon(Icons.cloud_upload),
+											label: Text('رفع ثم استعادة$suffix'),
+										),
+										FilledButton.icon(
+											onPressed: seconds > 0 ? null : () => Navigator.pop(ctx, 'clear'),
+											icon: const Icon(Icons.delete_sweep),
+											label: Text('حذف واستعادة$suffix'),
+										),
+									],
+								),
+							);
+						},
+					);
+				},
+			).then((result) {
+				// Clean up timer if dialog is dismissed
+				return result;
+			});
+		} else {
+			return showDialog<String?>(
+				context: context,
+				barrierDismissible: false,
+				builder: (_) {
+					int seconds = 5;
+					Timer? timer;
+					return StatefulBuilder(
+						builder: (ctx, setState) {
+							timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+								if (seconds > 0) {
+									setState(() => seconds--);
+								} else {
+									timer?.cancel();
+									timer = null;
+								}
+							});
+							final suffix = seconds > 0 ? ' ($seconds)' : '';
+							return Directionality(
+								textDirection: TextDirection.rtl,
+								child: AlertDialog(
+									title: const Text('استعادة البيانات من الخادم'),
+									content: const Text(
+										'سيتم حذف جميع البيانات المحلية واستبدالها بالبيانات الموجودة على الخادم.\n'
+										'انتظر 5 ثوانٍ قبل التأكيد.',
+									),
+									actions: [
+										TextButton(
+											onPressed: () => Navigator.pop(ctx),
+											child: const Text('إلغاء'),
+										),
+										ElevatedButton.icon(
+											onPressed: seconds > 0 ? null : () => Navigator.pop(ctx, 'clear'),
+											icon: const Icon(Icons.cloud_download),
+											label: Text('استعادة$suffix'),
+										),
+									],
+								),
+							);
+						},
+					);
+				},
+			).then((result) {
+				// Clean up timer if dialog is dismissed
+				return result;
+			});
+		}
 	}
 
 	Future<void> _pickAttendanceHabit() async {
@@ -194,6 +319,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 								),
 							),
 						),
+            const SizedBox(height: 12),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const Icon(Icons.cloud_download_outlined),
+                title: const Text('استعادة البيانات من الخادم'),
+                subtitle: const Text('حذف البيانات المحلية وإعادة جلبها من الخادم'),
+                onTap: _restoreFromServer,
+              ),
+            ),
 						const SizedBox(height: 12),
 						Card(
 							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

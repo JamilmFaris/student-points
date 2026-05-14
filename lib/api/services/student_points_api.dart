@@ -30,16 +30,65 @@ class BatchPointsResult {
   final int deleted;
 }
 
+class StudentPointsDto {
+  const StudentPointsDto({
+    required this.id,
+    required this.student,
+    required this.habit,
+    required this.isMinus,
+    required this.points,
+    required this.date,
+  });
+
+  final int id;
+  final int student;
+  final int habit;
+  final bool isMinus;
+  final int points;
+  final String date;
+
+  factory StudentPointsDto.fromJson(Map<String, dynamic> json) => StudentPointsDto(
+        id: json['id'] as int,
+        student: json['student'] as int,
+        habit: json['habit'] as int,
+        isMinus: json['isMinus'] as bool? ?? false,
+        points: (json['points'] as int?) ?? 0,
+        date: json['date'] as String? ?? '',
+      );
+}
+
 class StudentPointsApi {
   StudentPointsApi(this._client);
 
   final ApiClient _client;
   Dio get _dio => _client.dio;
 
-  /// `POST /api/student-points/` — create a single point record.
+  /// `GET /api/student-points/` — fetch all student points from the server.
+  Future<List<StudentPointsDto>> getAll({DateTime? updatedSince}) async {
+    try {
+      final res = await _dio.get(
+        '/api/student-points/',
+        queryParameters: updatedSince != null
+            ? {'updated_since': updatedSince.toUtc().toIso8601String()}
+            : null,
+      );
+      if (res.statusCode == 200 && res.data is List) {
+        return (res.data as List)
+            .map((e) => StudentPointsDto.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+      }
+      throw ApiException(extractDrfError(res) ?? 'فشل تحميل النقاط');
+    } on DioException catch (e) {
+      throw toApiException(e);
+    }
+  }
+
+  /// `POST /api/student-points/` — create a single point record with the
+  /// accumulated points value. `points` is signed; `isMinus` mirrors its sign.
   Future<void> create({
     required int studentId,
     required int habitId,
+    required int points, // signed: negative when isMinus=true
     required bool isMinus,
     required String date, // YYYY-MM-DD
     int? lessonId,
@@ -50,6 +99,7 @@ class StudentPointsApi {
         data: {
           'student': studentId,
           'habit': habitId,
+          'points': points,
           'isMinus': isMinus,
           'date': date,
           if (lessonId != null) 'lesson': lessonId,

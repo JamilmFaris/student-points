@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../api/dto/habit_dto.dart';
 import '../api/dto/hifz_dto.dart';
 import '../api/dto/student_dto.dart';
 import '../api/services/_dio_error.dart';
@@ -175,8 +176,12 @@ class SyncService {
     final hifz = fullPull
         ? await hifzApi.getAll()
         : await hifzApi.getAll(updatedSince: since);
+    final habits = fullPull ? await habitsApi.getAll() : null;
+    final studentPoints = fullPull ? await _getStudentPoints() : null;
     final studentStats = await _mergeStudents(db, students);
     final hifzStats = await _mergeHifz(db, hifz);
+    if (habits != null) await _mergeHabits(db, habits);
+    if (studentPoints != null) await _mergeStudentPoints(db, studentPoints);
 
     await _writeLastSyncAt(DateTime.now());
     return SyncResult(
@@ -738,18 +743,19 @@ class SyncService {
         rowsSkipped++;
         continue;
       }
-      final count = (row['count'] as int?) ?? 0;
-      if (count == 0) {
+      final pointsEarned = (row['points_earned'] as int?) ?? 0;
+      if (pointsEarned == 0) {
         rowsSkipped++;
         continue;
       }
       try {
-          await studentPointsApi.create(
-            studentId: remoteStudent,
-            habitId: remoteHabit,
-            isMinus: count < 0,
-            date: row['date'] as String,
-          );
+        await studentPointsApi.create(
+          studentId: remoteStudent,
+          habitId: remoteHabit,
+          points: pointsEarned,
+          isMinus: pointsEarned < 0,
+          date: row['date'] as String,
+        );
         await db.update(
           'daily_entries',
           {'sync_status': 'synced', 'server_updated_at': nowIso},
@@ -939,6 +945,135 @@ class SyncService {
       }
     });
     return _MergeStats(pulled: pulled, deleted: deleted, skipped: skipped);
+  }
+
+  /// Import StudentPointsDto type from API
+  Future<List<StudentPointsDto>> _getStudentPoints({DateTime? updatedSince}) async =>
+      updatedSince != null
+          ? await studentPointsApi.getAll(updatedSince: updatedSince)
+          : await studentPointsApi.getAll();
+
+  Future<void> _mergeStudentPoints(Database db, List<StudentPointsDto> points) async {
+    // Build remote_id -> local_id maps for students and habits so we can
+    // translate server foreign keys into local rows.
+    final studentRows = await db.query('students',
+        columns: ['id', 'remote_id'], where: 'remote_id IS NOT NULL');
+    final localStudentByRemote = <int, int>{
+      for (final r in studentRows) r['remote_id'] as int: r['id'] as int,
+    };
+    final habitRows = await db.query('habits',
+        columns: ['id', 'remote_id'], where: 'remote_id IS NOT NULL');
+    final localHabitByRemote = <int, int>{
+      for (final r in habitRows) r['remote_id'] as int: r['id'] as int,
+    };
+
+    await db.transaction((txn) async {
+      // Group server records by (local_student, local_habit, date). In the
+      // new push model there is typically one record per tuple, but we still
+      // sum in case multiple exist (e.g., re-syncs that haven't been pruned).
+      final Map<String, List<StudentPointsDto>> grouped = {};
+      for (final p in points) {
+        final localStudent = localStudentByRemote[p.student];
+        final localHabit = localHabitByRemote[p.habit];
+        if (localStudent == null || localHabit == null) continue;
+        final key = '$localStudent|$localHabit|${p.date}';
+        grouped.putIfAbsent(key, () => []).add(p);
+      }
+
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      for (final entry in grouped.entries) {
+        final parts = entry.key.split('|');
+        final studentId = int.parse(parts[0]);
+        final habitId = int.parse(parts[1]);
+        final date = parts[2];
+        final pointsList = entry.value;
+
+        // points is signed on the server; just sum as-is. count is the
+        // record count, kept consistent with the sign of the total.
+        int pointsEarned = 0;
+        for (final p in pointsList) {
+          pointsEarned += p.points;
+        }
+        final count = pointsEarned >= 0 ? pointsList.length : -pointsList.length;
+
+        final existing = await txn.query(
+          'daily_entries',
+          where: 'student_id = ? AND habit_id = ? AND date = ?',
+          whereArgs: [studentId, habitId, date],
+          limit: 1,
+        );
+
+        final values = <String, Object?>{
+          'student_id': studentId,
+          'habit_id': habitId,
+          'date': date,
+          'count': count,
+          'points_earned': pointsEarned,
+          'sync_status': 'synced',
+          'last_modified': nowIso,
+          'server_updated_at': nowIso,
+        };
+
+        if (existing.isEmpty) {
+          await txn.insert('daily_entries', values);
+        } else {
+          await txn.update('daily_entries', values,
+              where: 'id = ?', whereArgs: [existing.first['id']]);
+        }
+      }
+    });
+  }
+
+  Future<void> _mergeHabits(Database db, List<HabitDto> habits) async {
+    await db.transaction((txn) async {
+      for (final h in habits) {
+        final existing = await txn.query('habits',
+            columns: ['id'],
+            where: 'remote_id = ?',
+            whereArgs: [h.id],
+            limit: 1);
+        final values = <String, Object?>{
+          'remote_id': h.id,
+          'name': h.name,
+          'points': h.points,
+          'decrease_points': h.minusPoints,
+          'allow_negative': h.allowNegative ? 1 : 0,
+          'once_per_day': h.oncePerDay ? 1 : 0,
+          'sync_status': 'synced',
+        };
+        if (existing.isEmpty) {
+          await txn.insert('habits', values);
+        } else {
+          await txn.update('habits', values,
+              where: 'id = ?', whereArgs: [existing.first['id']]);
+        }
+      }
+    });
+  }
+
+  /// Returns true if any local table has rows not yet pushed to the server.
+  Future<bool> hasPendingData() async {
+    final db = await _db.database;
+    for (final table in ['students', 'habits', 'quran_memorization', 'daily_entries', 'lessons']) {
+      final res = await db.rawQuery(
+        "SELECT COUNT(*) as n FROM $table "
+        "WHERE sync_status IN ('pending_create','pending_update','pending_delete')"
+      );
+      if ((res.first['n'] as int) > 0) return true;
+    }
+    return false;
+  }
+
+  /// Wipes all local syncable data and resets the last-sync timestamp.
+  Future<void> clearAllLocalData() async {
+    final db = await _db.database;
+    await db.transaction((txn) async {
+      for (final t in ['daily_entries', 'quran_memorization', 'students', 'lessons', 'habits']) {
+        await txn.delete(t);
+      }
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('last_sync_at');
   }
 }
 
