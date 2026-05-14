@@ -81,4 +81,28 @@ class AuthCubit extends Cubit<AuthState> {
       emit(const AuthState.unauthenticated());
     }
   }
+
+  /// PATCH /api/users/me/ with the supplied fields. On success, emits an
+  /// authenticated state carrying the refreshed UserDto.
+  Future<UserDto> updateProfile({
+    String? email,
+    String? firstName,
+    String? lastName,
+    String? phoneNumber,
+    String? study,
+    String? dateOfBirth,
+    String? certificates,
+  }) async {
+    final updated = await authApi.updateMe(
+      email: email,
+      firstName: firstName,
+      lastName: lastName,
+      phoneNumber: phoneNumber,
+      study: study,
+      dateOfBirth: dateOfBirth,
+      certificates: certificates,
+    );
+    emit(AuthState.authenticated(updated));
+    return updated;
+  }
 }

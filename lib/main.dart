@@ -22,6 +22,7 @@ import 'ui/home_screen.dart';
 import 'ui/login_screen.dart';
 import 'ui/logs_screen.dart';
 import 'ui/memorization_screen.dart';
+import 'ui/profile_screen.dart';
 import 'ui/settings_screen.dart';
 import 'ui/splash_screen.dart';
 import 'ui/students_screen.dart';
@@ -99,6 +100,7 @@ class MyApp extends StatelessWidget {
           '/tracking': (_) => const TrackingScreen(),
           '/logs': (_) => const LogsScreen(),
           '/quran': (_) => const MemorizationScreen(),
+          '/profile': (_) => const ProfileScreen(),
           '/settings': (_) => const SettingsScreen(),
         },
       ),

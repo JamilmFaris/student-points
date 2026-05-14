@@ -41,6 +41,7 @@ class AppDrawer extends StatelessWidget {
 							_ListItem(icon: Icons.history, label: 'سجل النقاط', routeName: '/logs'),
 							_ListItem(icon: Icons.menu_book, label: 'حفظ القرآن', routeName: '/quran'),
 							const Divider(),
+							_ListItem(icon: Icons.person, label: 'الملف الشخصي', routeName: '/profile'),
 							_ListItem(icon: Icons.settings, label: 'الإعدادات', routeName: '/settings'),
 							ListTile(
 								leading: const Icon(Icons.logout, color: Colors.redAccent),

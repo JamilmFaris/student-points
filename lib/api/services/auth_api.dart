@@ -54,6 +54,36 @@ class AuthApi {
     }
   }
 
+  /// `PATCH /api/users/me/` — update editable profile fields.
+  Future<UserDto> updateMe({
+    String? email,
+    String? firstName,
+    String? lastName,
+    String? phoneNumber,
+    String? study,
+    String? dateOfBirth,
+    String? certificates,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        if (email != null) 'email': email,
+        if (firstName != null) 'first_name': firstName,
+        if (lastName != null) 'last_name': lastName,
+        if (phoneNumber != null) 'phone_number': phoneNumber,
+        if (study != null) 'study': study,
+        if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+        if (certificates != null) 'certificates': certificates,
+      };
+      final res = await _dio.patch('/api/users/me/', data: body);
+      if ((res.statusCode == 200 || res.statusCode == 202) && res.data is Map) {
+        return UserDto.fromJson(Map<String, dynamic>.from(res.data as Map));
+      }
+      throw AuthApiException(_extractError(res) ?? 'تعذّر تحديث بيانات المستخدم');
+    } on DioException catch (e) {
+      throw AuthApiException(_dioMessage(e));
+    }
+  }
+
   String? _extractError(Response res) {
     final body = res.data;
     if (body is Map) {
