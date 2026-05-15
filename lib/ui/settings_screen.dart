@@ -22,6 +22,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 	List<Habit> _habits = const [];
 	Habit? _resolvedAttendanceHabit;
 	bool _attendanceFromName = false; // true if a حضور habit dictates the choice
+	Habit? _resolvedMemorizationHabit;
 
 	@override
 	void initState() {
@@ -41,12 +42,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
 		final byName = habits.any(
 			(h) => h.name.trim() == AppMode.defaultAttendanceHabitName,
 		);
+		final resolvedMem = await AppMode.resolveMemorizationHabit(habits);
 		if (!mounted) return;
 		setState(() {
 			_habits = habits;
 			_resolvedAttendanceHabit = resolved;
 			_attendanceFromName = byName;
+			_resolvedMemorizationHabit = resolvedMem;
 		});
+	}
+
+	Future<void> _pickMemorizationHabit() async {
+		final picked = await showDialog<Habit>(
+			context: context,
+			builder: (ctx) => Directionality(
+				textDirection: TextDirection.rtl,
+				child: AlertDialog(
+					title: const Text('اختر العادة الخاصة بحفظ القرآن'),
+					content: SizedBox(
+						width: double.maxFinite,
+						child: ListView.builder(
+							shrinkWrap: true,
+							itemCount: _habits.length,
+							itemBuilder: (_, i) => ListTile(
+								title: Text(_habits[i].name),
+								onTap: () => Navigator.pop(ctx, _habits[i]),
+							),
+						),
+					),
+					actions: [
+						TextButton(
+							onPressed: () => Navigator.pop(ctx),
+							child: const Text('إلغاء'),
+						),
+					],
+				),
+			),
+		);
+		if (picked == null) return;
+		await AppMode.setMemorizationHabitOverride(picked.id);
+		await _loadAttendance();
 	}
 
 	Future<void> _restoreFromServer() async {
@@ -263,6 +298,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
 												style: TextStyle(fontSize: 12, color: Colors.black54),
 											),
 										],
+									],
+								),
+							),
+						),
+						const SizedBox(height: 12),
+						Card(
+							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+							child: Padding(
+								padding: const EdgeInsets.all(16),
+								child: Column(
+									crossAxisAlignment: CrossAxisAlignment.start,
+									children: [
+										const Text('العادة الخاصة بحفظ القرآن', style: TextStyle(fontWeight: FontWeight.w700)),
+										const SizedBox(height: 8),
+										const Text(
+											'عند إضافة حفظ جديد لطالب وإدخال نقاط، تُضاف النقاط إلى تتبّع هذه العادة لذلك اليوم. هذا الإعداد اختياري.',
+											style: TextStyle(fontSize: 13),
+										),
+										const SizedBox(height: 12),
+										Text(
+											_resolvedMemorizationHabit == null
+												? 'لم يتم التعيين'
+												: 'الحالية: ${_resolvedMemorizationHabit!.name}',
+											style: const TextStyle(fontSize: 13),
+										),
+										const SizedBox(height: 12),
+										Wrap(
+											spacing: 8,
+											runSpacing: 8,
+											children: [
+												OutlinedButton.icon(
+													icon: const Icon(Icons.edit),
+													label: const Text('تغيير'),
+													onPressed: _habits.isEmpty ? null : _pickMemorizationHabit,
+												),
+												if (_resolvedMemorizationHabit != null)
+													TextButton.icon(
+														icon: const Icon(Icons.clear),
+														label: const Text('إلغاء التعيين'),
+														onPressed: () async {
+															await AppMode.setMemorizationHabitOverride(null);
+															await _loadAttendance();
+														},
+													),
+											],
+										),
 									],
 								),
 							),

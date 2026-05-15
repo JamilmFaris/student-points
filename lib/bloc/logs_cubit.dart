@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../repositories/tracking_repository.dart';
@@ -52,9 +54,34 @@ class LogsState {
 
 class LogsCubit extends Cubit<LogsState> {
 	final TrackingRepository _repo;
+	StreamSubscription<TrackingPointsDelta>? _externalSub;
+
 	LogsCubit(this._repo)
 		: super(LogsState(dates: [], dailyTotals: {}, monthlyTotals: {}, yearlyTotals: {}, loading: true)) {
 		refreshDates();
+		_externalSub = TrackingRepository.externalChanges.listen((delta) async {
+			// New dates may have appeared.
+			await refreshDates();
+			final selectedDate = state.selectedDate;
+			if (selectedDate != null &&
+				selectedDate.year == delta.date.year &&
+				selectedDate.month == delta.date.month &&
+				selectedDate.day == delta.date.day) {
+				await loadDaily(selectedDate);
+			}
+			final selYear = state.selectedYear;
+			final selMonth = state.selectedMonth;
+			if (selYear != null && selMonth != null &&
+				selYear == delta.date.year && selMonth == delta.date.month) {
+				await loadMonthly(selYear, selMonth);
+			}
+		});
+	}
+
+	@override
+	Future<void> close() {
+		_externalSub?.cancel();
+		return super.close();
 	}
 
 	Future<void> refreshDates() async {

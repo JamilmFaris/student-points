@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -378,11 +380,24 @@ class _DayBreakdownDialogState extends State<_DayBreakdownDialog> {
 	List<Habit> _habits = const [];
 	Map<int, Map<int, int>> _counts = const {};
 	Map<int, Map<int, int>> _points = const {};
+	StreamSubscription<TrackingPointsDelta>? _externalSub;
 
 	@override
 	void initState() {
 		super.initState();
 		_load();
+		_externalSub = TrackingRepository.externalChanges.listen((delta) {
+			final d = widget.date;
+			if (d.year == delta.date.year && d.month == delta.date.month && d.day == delta.date.day) {
+				_load();
+			}
+		});
+	}
+
+	@override
+	void dispose() {
+		_externalSub?.cancel();
+		super.dispose();
 	}
 
 	Future<void> _load() async {

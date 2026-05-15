@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../models/lesson.dart';
@@ -40,10 +42,26 @@ class TrackingCubit extends Cubit<TrackingState> {
 	final TrackingRepository _repo;
 	final LessonRepository _lessonRepo;
 
+	StreamSubscription<TrackingPointsDelta>? _externalSub;
+
 	TrackingCubit(this._repo, {LessonRepository? lessonRepo})
 		: _lessonRepo = lessonRepo ?? LessonRepository(),
 		  super(TrackingState(date: DateTime.now(), countsByStudentHabit: {}, loading: true)) {
 		load(DateTime.now());
+		_externalSub = TrackingRepository.externalChanges.listen((delta) {
+			final s = state.date;
+			if (s.year != delta.date.year || s.month != delta.date.month || s.day != delta.date.day) return;
+			final updated = _cloneCounts(state.countsByStudentHabit);
+			final studentMap = updated.putIfAbsent(delta.studentId, () => {});
+			studentMap[delta.habitId] = (studentMap[delta.habitId] ?? 0) + delta.points;
+			emit(state.copyWith(countsByStudentHabit: updated));
+		});
+	}
+
+	@override
+	Future<void> close() {
+		_externalSub?.cancel();
+		return super.close();
 	}
 
 	Future<void> load(DateTime date) async {

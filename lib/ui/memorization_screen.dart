@@ -6,6 +6,9 @@ import '../bloc/students_cubit.dart';
 import '../models/student.dart';
 import '../repositories/student_repository.dart';
 import '../repositories/memorization_repository.dart';
+import '../repositories/habit_repository.dart';
+import '../repositories/tracking_repository.dart';
+import '../services/app_mode.dart';
 import '../models/memorized_section.dart';
 import '../data/surah_names.dart';
 import '../data/juz_data.dart';
@@ -461,7 +464,28 @@ Future<void> _addMemorizedSection(BuildContext context, Student student) async {
         label: result.label,
         notes: result.notes,
     ));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الحفظ')));
+
+    String message = 'تمت إضافة الحفظ';
+    if (result.points != null && result.points! > 0) {
+        final habits = await HabitRepository().getAll();
+        final memHabit = await AppMode.resolveMemorizationHabit(habits);
+        if (memHabit != null && memHabit.id != null) {
+            await TrackingRepository().addPointsForHabit(
+                date: DateTime.now(),
+                studentId: student.id!,
+                habitId: memHabit.id!,
+                points: result.points!,
+            );
+            message = 'تمت إضافة الحفظ ورُصدت ${result.points} نقطة في "${memHabit.name}"';
+        } else {
+            message =
+                'تمت إضافة الحفظ، لكن لم تُرصد النقاط: أضف عادة من شاشة العادات ثم عيّنها كـ"العادة الخاصة بحفظ القرآن" في الإعدادات.';
+        }
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+    );
 }
 
 class _MemResult {
@@ -471,7 +495,8 @@ class _MemResult {
     final DateTime date;
     final String? label;
     final String? notes;
-    _MemResult(this.surahIndex, this.ayahFrom, this.ayahTo, this.date, this.label, this.notes);
+    final int? points;
+    _MemResult(this.surahIndex, this.ayahFrom, this.ayahTo, this.date, this.label, this.notes, this.points);
 }
 
 Future<_MemResult?> _promptMemorization(BuildContext context) async {
@@ -479,6 +504,7 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
     final fromController = TextEditingController();
     final toController = TextEditingController();
     final notesController = TextEditingController();
+    final pointsController = TextEditingController();
     DateTime date = DateTime.now();
     String? label;
 
@@ -592,6 +618,16 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             decoration: const InputDecoration(labelText: 'ملاحظات'),
                                             maxLines: 2,
                                         ),
+                                        const SizedBox(height: 8),
+                                        TextField(
+                                            controller: pointsController,
+                                            decoration: const InputDecoration(
+                                                labelText: 'النقاط (اختياري)',
+                                                helperText: 'تُضاف إلى تتبّع عادة حفظ القرآن لذلك اليوم',
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                            textDirection: TextDirection.ltr,
+                                        ),
                                     ],
                                 ),
                             ),
@@ -605,6 +641,12 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             return;
                                         }
                                         final notesText = notesController.text.trim();
+                                        final pointsText = pointsController.text.trim();
+                                        final pointsValue = pointsText.isEmpty ? null : int.tryParse(pointsText);
+                                        if (pointsText.isNotEmpty && pointsValue == null) {
+                                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('الرجاء إدخال نقاط صحيحة')));
+                                            return;
+                                        }
                                         Navigator.pop(ctx, _MemResult(
                                             surahIndex,
                                             int.parse(fromController.text.trim()),
@@ -612,6 +654,7 @@ Future<_MemResult?> _promptMemorization(BuildContext context) async {
                                             DateTime(date.year, date.month, date.day),
                                             label ?? 'حفظ',
                                             notesText.isEmpty ? null : notesText,
+                                            pointsValue,
                                         ));
                                     },
                                     child: const Text('حفظ'),

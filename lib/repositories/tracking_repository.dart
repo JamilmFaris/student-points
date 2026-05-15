@@ -1,10 +1,33 @@
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../data/app_database.dart';
 import '../models/daily_entry.dart';
 import '../models/habit_daily_point.dart';
 
+class TrackingPointsDelta {
+	final DateTime date;
+	final int studentId;
+	final int habitId;
+	final int points;
+	const TrackingPointsDelta({
+		required this.date,
+		required this.studentId,
+		required this.habitId,
+		required this.points,
+	});
+}
+
 class TrackingRepository {
+	/// Broadcasts a delta whenever daily_entries are mutated outside the normal
+	/// TrackingCubit increment/decrement flow (e.g. Hifz points). Open screens
+	/// listen and merge the delta to avoid stale in-memory state without
+	/// clobbering the user's unsaved edits.
+	static final StreamController<TrackingPointsDelta> _externalChanges =
+		StreamController<TrackingPointsDelta>.broadcast();
+	static Stream<TrackingPointsDelta> get externalChanges => _externalChanges.stream;
+
 	Future<void> incrementHabitCount({required DateTime date, required int studentId, required int habitId}) async {
 		final db = await AppDatabase().database;
 		final dateStr = date.toIso8601String().substring(0, 10);
@@ -38,6 +61,55 @@ class TrackingRepository {
 					where: 'id = ?', whereArgs: [existing.first['id']]);
 			}
 		});
+	}
+
+	/// Adds an arbitrary point amount to a (date, student, habit) entry.
+	/// Used for one-off awards (e.g. Hifz) where the points aren't a simple
+	/// multiple of the habit's per-count value. Bumps count by 1 and adds the
+	/// raw points to points_earned.
+	Future<void> addPointsForHabit({
+		required DateTime date,
+		required int studentId,
+		required int habitId,
+		required int points,
+	}) async {
+		if (points == 0) return;
+		final db = await AppDatabase().database;
+		final dayDate = DateTime(date.year, date.month, date.day);
+		final dateStr = dayDate.toIso8601String().substring(0, 10);
+		final nowIso = DateTime.now().toUtc().toIso8601String();
+		await db.transaction((txn) async {
+			final existing = await txn.query('daily_entries',
+				where: 'date = ? AND student_id = ? AND habit_id = ?',
+				whereArgs: [dateStr, studentId, habitId], limit: 1);
+			if (existing.isEmpty) {
+				await txn.insert('daily_entries', {
+					'date': dateStr,
+					'student_id': studentId,
+					'habit_id': habitId,
+					'count': 1,
+					'points_earned': points,
+					'sync_status': 'pending_create',
+					'last_modified': nowIso,
+				});
+			} else {
+				final count = (existing.first['count'] as int) + 1;
+				final prevPoints = (existing.first['points_earned'] as int? ?? 0);
+				await txn.update('daily_entries', {
+					'count': count,
+					'points_earned': prevPoints + points,
+					'sync_status': _nextStatus(existing.first['sync_status'] as String?),
+					'last_modified': nowIso,
+				},
+					where: 'id = ?', whereArgs: [existing.first['id']]);
+			}
+		});
+		_externalChanges.add(TrackingPointsDelta(
+			date: dayDate,
+			studentId: studentId,
+			habitId: habitId,
+			points: points,
+		));
 	}
 
 	Future<void> saveEntries(List<DailyEntry> entries) async {
