@@ -72,7 +72,7 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'نقاط الطلاب',
+        title: 'خادم الحلقة',
         theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal)),
         locale: const Locale('ar'),
         localizationsDelegates: [
