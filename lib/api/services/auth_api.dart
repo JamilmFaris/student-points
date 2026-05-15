@@ -84,6 +84,24 @@ class AuthApi {
     }
   }
 
+  /// `POST /api/users/me/change-password/` — change the user's password.
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    try {
+      final res = await _dio.post(
+        '/api/users/me/change-password/',
+        data: {
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
+      );
+      if (res.statusCode != 200 && res.statusCode != 201 && res.statusCode != 204) {
+        throw AuthApiException(_extractError(res) ?? 'تعذّر تغيير كلمة المرور');
+      }
+    } on DioException catch (e) {
+      throw AuthApiException(_dioMessage(e));
+    }
+  }
+
   String? _extractError(Response res) {
     final body = res.data;
     if (body is Map) {

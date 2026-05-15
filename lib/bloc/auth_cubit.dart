@@ -105,4 +105,9 @@ class AuthCubit extends Cubit<AuthState> {
     emit(AuthState.authenticated(updated));
     return updated;
   }
+
+  /// POST /api/users/me/change-password/ — change the user's password.
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await authApi.changePassword(currentPassword, newPassword);
+  }
 }
