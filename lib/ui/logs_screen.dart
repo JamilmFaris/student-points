@@ -350,7 +350,7 @@ class _TotalsList extends StatelessWidget {
 						margin: const EdgeInsets.symmetric(vertical: 6),
 						child: ListTile(
 							leading: CircleAvatar(child: Text(initial)),
-							title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+							title: Text('${i + 1}. $name', style: const TextStyle(fontWeight: FontWeight.w600)),
 							subtitle: Text(subtitle),
 							trailing: Chip(
 								label: Text('${entry.value}'),

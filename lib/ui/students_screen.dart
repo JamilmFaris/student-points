@@ -44,7 +44,7 @@ class StudentsScreen extends StatelessWidget {
 									final s = state.students[index];
                                     return ListTile(
 										key: ValueKey(s.id),
-										title: Text(s.name),
+										title: Text('${index + 1}. ${s.name}'),
                                         onTap: () => _showStudentInfo(context, s),
 									trailing: Row(
 											mainAxisSize: MainAxisSize.min,
