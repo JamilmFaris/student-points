@@ -1,8 +1,15 @@
+import 'dart:async';
+
 import '../data/app_database.dart';
 import '../models/student.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
 
 class StudentRepository {
+	/// Broadcasts whenever students are mutated outside the normal UI flow.
+	/// Screens listen and reload to avoid stale in-memory state.
+	static final StreamController<void> _externalChanges =
+		StreamController<void>.broadcast();
+	static Stream<void> get externalChanges => _externalChanges.stream;
 	Future<List<Student>> getAll() async {
 		final db = await AppDatabase().database;
 		// Hide rows tombstoned for server-side deletion until SyncService drains them.
@@ -30,7 +37,9 @@ class StudentRepository {
 			..['sort_order'] = maxOrder + 1
 			..['sync_status'] = 'pending_create'
 			..['last_modified'] = now;
-		return db.insert('students', toInsert);
+		final id = await db.insert('students', toInsert);
+		_externalChanges.add(null);
+		return id;
 	}
 
 	Future<int> update(Student student) async {
@@ -54,22 +63,28 @@ class StudentRepository {
 			..remove('id')
 			..['sync_status'] = nextStatus
 			..['last_modified'] = now;
-		return db.update('students', values, where: 'id = ?', whereArgs: [student.id]);
+		final count = await db.update('students', values, where: 'id = ?', whereArgs: [student.id]);
+		_externalChanges.add(null);
+		return count;
 	}
 
 	Future<int> delete(int id) async {
 		final db = await AppDatabase().database;
 		final rows = await db.query('students',
 			columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
+		late int result;
 		if (rows.isEmpty || rows.first['remote_id'] == null) {
 			// Never made it to the server — hard delete locally.
-			return db.delete('students', where: 'id = ?', whereArgs: [id]);
+			result = await db.delete('students', where: 'id = ?', whereArgs: [id]);
+		} else {
+			// Tombstone so SyncService can DELETE on the server, then hard-remove locally.
+			final now = DateTime.now().toUtc().toIso8601String();
+			result = await db.update('students',
+				{'sync_status': 'pending_delete', 'last_modified': now},
+				where: 'id = ?', whereArgs: [id]);
 		}
-		// Tombstone so SyncService can DELETE on the server, then hard-remove locally.
-		final now = DateTime.now().toUtc().toIso8601String();
-		return db.update('students',
-			{'sync_status': 'pending_delete', 'last_modified': now},
-			where: 'id = ?', whereArgs: [id]);
+		_externalChanges.add(null);
+		return result;
 	}
 
 	Future<void> updateOrder(List<Student> students) async {
@@ -79,6 +94,7 @@ class StudentRepository {
 				await txn.update('students', {'sort_order': i}, where: 'id = ?', whereArgs: [students[i].id]);
 			}
 		});
+		_externalChanges.add(null);
 	}
 }
 

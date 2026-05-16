@@ -16,6 +16,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 
 import 'widgets/app_drawer.dart';
 import 'notes_screen.dart';
+import 'widgets/sync_indicator.dart';
 
 final _contactsChannel = MethodChannel('student_points/contacts');
 
@@ -27,7 +28,10 @@ class StudentsScreen extends StatelessWidget {
 		return Directionality(
 			textDirection: TextDirection.rtl,
 			child: Scaffold(
-					appBar: AppBar(title: const Text('الطلاب')),
+          appBar: AppBar(
+            title: Center(child: const Text('الطلاب')),
+            actions: const [SyncIndicator()],
+          ),
 					drawer: const AppDrawer(),
 					body: BlocBuilder<StudentsCubit, StudentsState>(
 						builder: (context, state) {

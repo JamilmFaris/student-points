@@ -7,6 +7,7 @@ import '../models/habit.dart';
 import '../repositories/habit_repository.dart';
 
 import 'widgets/app_drawer.dart';
+import 'widgets/sync_indicator.dart' show SyncIndicator;
 
 class HabitsScreen extends StatelessWidget {
 	const HabitsScreen({super.key});
@@ -18,7 +19,10 @@ class HabitsScreen extends StatelessWidget {
 			child: BlocProvider(
 				create: (_) => HabitsCubit(HabitRepository()),
 				child: Scaffold(
-					appBar: AppBar(title: const Text('العادات')),
+          appBar: AppBar(
+            title: Center(child: const Text('العادات')),
+            actions: const [SyncIndicator()],
+          ),
 					drawer: const AppDrawer(),
 					body: BlocBuilder<HabitsCubit, HabitsState>(
 						builder: (context, state) {

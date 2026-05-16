@@ -12,6 +12,7 @@ import '../models/habit.dart';
 import '../services/app_mode.dart';
 
 import 'widgets/app_drawer.dart';
+import 'widgets/sync_indicator.dart';
 
 class TrackingScreen extends StatelessWidget {
 	const TrackingScreen({super.key});
@@ -27,7 +28,10 @@ class TrackingScreen extends StatelessWidget {
 					BlocProvider(create: (_) => TrackingCubit(TrackingRepository())),
 				],
 				child: Scaffold(
-					appBar: AppBar(title: const _LessonAppBarTitle()),
+					appBar: AppBar(
+            title: const _LessonAppBarTitle(),
+            actions: const [SyncIndicator()],
+          ),
 					drawer: const AppDrawer(),
 					body: SafeArea(top: false, left: false, right: false, bottom: true, child: const _TrackingTable()),
 					floatingActionButton: Builder(
@@ -94,7 +98,7 @@ class _TrackingTable extends StatefulWidget {
 }
 
 class _TrackingTableState extends State<_TrackingTable> {
-	static const double _leftColumnWidth = 140;
+	static const double _leftColumnWidth = 90;
 	static const double _totalColumnWidth = 55;
 	// Adaptive widths
 	static const double _checkboxColumnWidth = 64; // once per day, no negative (Checkbox only)
@@ -321,10 +325,8 @@ class _TrackingTableState extends State<_TrackingTable> {
 					final habits = hState.habits;
 
 					final scheme = Theme.of(context).colorScheme;
-					return Padding(
-						padding: const EdgeInsets.only(bottom: 80),
-						child: Column(
-							children: [
+					return Column(
+						children: [
 								Row(
 									children: [
 										_headerCell(const Text('الطالب'), width: _leftColumnWidth, backgroundColor: scheme.primaryContainer),
@@ -492,9 +494,8 @@ class _TrackingTableState extends State<_TrackingTable> {
 									),
 								),
 							],
-						),
-					);
-				});
+						);
+					});
 			});
 		});
 	}

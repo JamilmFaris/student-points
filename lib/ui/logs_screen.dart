@@ -12,6 +12,7 @@ import '../repositories/student_repository.dart';
 import '../repositories/tracking_repository.dart';
 
 import 'widgets/app_drawer.dart';
+import 'widgets/sync_indicator.dart' show SyncIndicator;
 
 class LogsScreen extends StatelessWidget {
 	const LogsScreen({super.key});
@@ -29,14 +30,15 @@ class LogsScreen extends StatelessWidget {
 					length: 3,
 					child: Scaffold(
 						appBar: AppBar(
-							title: const Text('سجل النقاط'),
+              title: Center(child: const Text('سجل النقاط')),
+              actions: const [SyncIndicator()],
 							bottom: const TabBar(tabs: [
 								Tab(text: 'يومي'),
 								Tab(text: 'شهري'),
 								Tab(text: 'نطاق'),
 							]),
 						),
-						drawer: const AppDrawer(),
+					drawer: const AppDrawer(),
 						body: const TabBarView(children: [
 							_DailyTab(),
 							_MonthlyTab(),

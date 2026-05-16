@@ -1,7 +1,14 @@
+import 'dart:async';
+
 import '../data/app_database.dart';
 import '../models/habit.dart';
 
 class HabitRepository {
+	/// Broadcasts whenever habits are mutated outside the normal UI flow.
+	/// Screens listen and reload to avoid stale in-memory state.
+	static final StreamController<void> _externalChanges =
+		StreamController<void>.broadcast();
+	static Stream<void> get externalChanges => _externalChanges.stream;
 	Future<List<Habit>> getAll() async {
 		final db = await AppDatabase().database;
 		final rows = await db.query('habits', where: 'sync_status != ?', whereArgs: ['pending_delete'], orderBy: 'sort_order, name COLLATE NOCASE');
@@ -20,7 +27,9 @@ class HabitRepository {
 		}
 		// Mark new habits as pending_create for sync
 		final toInsert = habitToInsert.toMap()..remove('id')..['sync_status'] = 'pending_create';
-		return db.insert('habits', toInsert);
+		final id = await db.insert('habits', toInsert);
+		_externalChanges.add(null);
+		return id;
 	}
 
 	Future<int> update(Habit habit) async {
@@ -39,21 +48,27 @@ class HabitRepository {
 		}
 
 		final values = habit.toMap()..remove('id')..['sync_status'] = syncStatus;
-		return db.update('habits', values, where: 'id = ?', whereArgs: [habit.id]);
+		final count = await db.update('habits', values, where: 'id = ?', whereArgs: [habit.id]);
+		_externalChanges.add(null);
+		return count;
 	}
 
 	Future<int> delete(int id) async {
 		final db = await AppDatabase().database;
 		final rows = await db.query('habits',
 			columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
+		late int result;
 		if (rows.isEmpty || rows.first['remote_id'] == null) {
 			// Never made it to the server — hard delete locally.
-			return db.delete('habits', where: 'id = ?', whereArgs: [id]);
+			result = await db.delete('habits', where: 'id = ?', whereArgs: [id]);
+		} else {
+			// Mark for server-side deletion, then hard-remove locally after sync.
+			result = await db.update('habits',
+				{'sync_status': 'pending_delete'},
+				where: 'id = ?', whereArgs: [id]);
 		}
-		// Mark for server-side deletion, then hard-remove locally after sync.
-		return db.update('habits',
-			{'sync_status': 'pending_delete'},
-			where: 'id = ?', whereArgs: [id]);
+		_externalChanges.add(null);
+		return result;
 	}
 
 	Future<void> updateSortOrders(List<Habit> habits) async {
@@ -69,6 +84,7 @@ class HabitRepository {
 				);
 			}
 		});
+		_externalChanges.add(null);
 	}
 
 	Future<int> _getMaxSortOrder() async {

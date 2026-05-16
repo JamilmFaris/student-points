@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../models/student.dart';
@@ -21,8 +23,19 @@ class StudentsState {
 
 class StudentsCubit extends Cubit<StudentsState> {
 	final StudentRepository _repo;
+	StreamSubscription<void>? _externalSub;
+
 	StudentsCubit(this._repo) : super(StudentsState(students: [], loading: true)) {
 		load();
+		_externalSub = StudentRepository.externalChanges.listen((_) {
+			load();
+		});
+	}
+
+	@override
+	Future<void> close() {
+		_externalSub?.cancel();
+		return super.close();
 	}
 
 	Future<void> load() async {

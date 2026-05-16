@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../models/habit.dart';
@@ -21,8 +23,19 @@ class HabitsState {
 
 class HabitsCubit extends Cubit<HabitsState> {
 	final HabitRepository _repo;
+	StreamSubscription<void>? _externalSub;
+
 	HabitsCubit(this._repo) : super(HabitsState(habits: [], loading: true)) {
 		load();
+		_externalSub = HabitRepository.externalChanges.listen((_) {
+			load();
+		});
+	}
+
+	@override
+	Future<void> close() {
+		_externalSub?.cancel();
+		return super.close();
 	}
 
 	Future<void> load() async {

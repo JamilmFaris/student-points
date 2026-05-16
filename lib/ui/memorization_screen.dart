@@ -14,6 +14,7 @@ import '../data/surah_names.dart';
 import '../data/juz_data.dart';
 
 import 'widgets/app_drawer.dart';
+import 'widgets/sync_indicator.dart' show SyncIndicator;
 
 const _kThunderTipKey = 'memorization_thunder_tip_seen';
 
@@ -70,8 +71,11 @@ class _MemorizationScreenState extends State<MemorizationScreen> {
             child: BlocProvider(
                 create: (_) => StudentsCubit(StudentRepository()),
                 child: Scaffold(
-                    appBar: AppBar(title: const Text('حفظ القرآن')),
-                    drawer: const AppDrawer(),
+                    appBar: AppBar(
+                      title: Center(child: const Text('حفظ القرآن')),
+                      actions: const [SyncIndicator()],
+                    ),
+					          drawer: const AppDrawer(),
                     body: BlocBuilder<StudentsCubit, StudentsState>(
                         builder: (context, state) {
                             if (state.loading) return const Center(child: CircularProgressIndicator());
