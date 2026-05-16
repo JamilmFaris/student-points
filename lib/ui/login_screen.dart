@@ -62,7 +62,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: 16),
+                        Image.asset(
+                          'assets/images/mosque-primary.png',
+                          height: 120,
+                          width: 120,
+                        ),
+                        const SizedBox(height: 32),
                         TextFormField(
                           controller: _username,
                           enabled: !loading,
