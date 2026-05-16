@@ -347,12 +347,13 @@ class _TrackingTableState extends State<_TrackingTable> {
 									],
 								),
 								Expanded(
-									child: Row(
+									child: Row(crossAxisAlignment: CrossAxisAlignment.start,
 										children: [
 											SingleChildScrollView(
 												controller: _verticalLeftController,
 												physics: const NeverScrollableScrollPhysics(),
 												child: Column(
+													mainAxisAlignment: MainAxisAlignment.start,
 													children: [
 														for (int i = 0; i < students.length; i++)
 															Row(children: [
@@ -382,9 +383,10 @@ class _TrackingTableState extends State<_TrackingTable> {
 													controller: _verticalBodyController,
 													scrollDirection: Axis.vertical,
 													child: SingleChildScrollView(
-														controller: _horizontalBodyController,
+										 				controller: _horizontalBodyController,
 														scrollDirection: Axis.horizontal,
 														child: Column(
+															mainAxisAlignment: MainAxisAlignment.start,
 															children: [
 																for (int i = 0; i < students.length; i++)
 																	Row(
