@@ -8,6 +8,7 @@ import 'api/services/auth_api.dart';
 import 'api/services/habits_api.dart';
 import 'api/services/hifz_api.dart';
 import 'api/services/lessons_api.dart';
+import 'api/services/sabr_api.dart';
 import 'api/services/student_points_api.dart';
 import 'api/services/students_api.dart';
 import 'bloc/auth_cubit.dart';
@@ -38,6 +39,7 @@ void main() {
   final studentPointsApi = StudentPointsApi(apiClient);
   final lessonsApi = LessonsApi(apiClient);
   final attendanceApi = AttendanceApi(apiClient);
+  final sabrApi = SabrApi(apiClient);
 
   final authCubit = AuthCubit(authApi: authApi, tokenStorage: tokenStorage);
   final syncService = SyncService(
@@ -47,6 +49,7 @@ void main() {
     studentPointsApi: studentPointsApi,
     lessonsApi: lessonsApi,
     attendanceApi: attendanceApi,
+    sabrApi: sabrApi,
   );
   final syncCubit = SyncCubit(syncService: syncService);
 

@@ -7,8 +7,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/students_cubit.dart';
 import '../bloc/sync_cubit.dart';
 import '../models/student.dart';
+import '../models/sabr_enums.dart';
 import '../repositories/tracking_repository.dart';
 import '../repositories/habit_repository.dart';
+import '../repositories/sabr_repository.dart';
 import '../models/habit.dart';
 import 'widgets/habit_progress_chart.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -323,7 +325,9 @@ void _showStudentInfo(BuildContext context, Student s) {
                                     _infoRow(ctx, 'الصف', s.grade),
                                     _infoRow(ctx, 'رقم الهاتف', s.phoneNumber),
                                     const SizedBox(height: 12),
-                                    Row(
+                                    Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
                                         children: [
                                             if ((s.phoneNumber ?? '').trim().isNotEmpty)
                                                 ElevatedButton.icon(
@@ -338,7 +342,6 @@ void _showStudentInfo(BuildContext context, Student s) {
                                                     icon: const Icon(Icons.phone),
                                                     label: const Text('اتصال'),
                                                 ),
-                                            const SizedBox(width: 8),
                                             OutlinedButton.icon(
                                                 icon: const Icon(Icons.note_add_outlined),
                                                 label: const Text('ملاحظات'),
@@ -347,11 +350,9 @@ void _showStudentInfo(BuildContext context, Student s) {
                                                     Navigator.push(context, MaterialPageRoute(builder: (_) => NotesScreen(student: s)));
                                                 },
                                             ),
-                                            const SizedBox(width: 8),
                                             OutlinedButton.icon(
                                                 onPressed: () async {
                                                     Navigator.pop(ctx);
-                                                    // Open edit dialog prefilled
                                                     final details = await _promptStudentDetails(
                                                         context,
                                                         student: s,
@@ -383,6 +384,14 @@ void _showStudentInfo(BuildContext context, Student s) {
                                                 },
                                                 icon: const Icon(Icons.edit),
                                                 label: const Text('تعديل'),
+                                            ),
+                                            OutlinedButton.icon(
+                                                onPressed: () {
+                                                    Navigator.pop(ctx);
+                                                    _showSabrView(context, s);
+                                                },
+                                                icon: const Icon(Icons.quiz_outlined),
+                                                label: const Text('عرض السبر'),
                                             ),
                                         ],
                                     ),
@@ -570,4 +579,135 @@ Future<_StudentDetailsResult?> _promptStudentDetails(BuildContext context, {Stud
     );
 }
 
+// ── Sabr view ─────────────────────────────────────────────────────────────────
 
+/// Formats a merged range list into a display string.
+/// [5, 5] → "5"    [1, 5] → "1 - 5"    multiple → joined with " ، "
+String _formatRanges(List<({int from, int to})> ranges) {
+    if (ranges.isEmpty) return 'لا توجد بيانات';
+    return ranges.map((r) => r.from == r.to ? '${r.from}' : '${r.from} - ${r.to}').join(' ، ');
+}
+
+Future<void> _showSabrView(BuildContext context, Student student) async {
+    SabrMainType selectedType = SabrMainType.awqaf;
+    bool loading = false;
+    String? error;
+    List<({int from, int to})>? quranRanges;
+    List<String>? hadithTypes;
+
+    Future<void> load(StateSetter setState, SabrMainType type) async {
+        setState(() { loading = true; error = null; quranRanges = null; hadithTypes = null; });
+        try {
+            final repo = SabrRepository();
+            if (type == SabrMainType.hadith) {
+                final result = await repo.getHadithSabrTypes(localStudentId: student.id!);
+                setState(() { hadithTypes = result; loading = false; });
+            } else {
+                final result = await repo.getQuranSabrRanges(localStudentId: student.id!, sabrType: type);
+                setState(() { quranRanges = result; loading = false; });
+            }
+        } catch (e) {
+            setState(() { error = e.toString(); loading = false; });
+        }
+    }
+
+    await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+            return Directionality(
+                textDirection: TextDirection.rtl,
+                child: StatefulBuilder(
+                    builder: (ctx, setState) {
+                        Widget buildContent() {
+                            if (loading) return const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()));
+                            if (error != null) return Padding(padding: const EdgeInsets.all(16), child: Text('خطأ: $error', style: const TextStyle(color: Colors.red)));
+
+                            if (selectedType == SabrMainType.hadith) {
+                                if (hadithTypes == null) return const SizedBox.shrink();
+                                if (hadithTypes!.isEmpty) return const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('لا توجد بيانات لهذا النوع')));
+                                return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: hadithTypes!.map((t) => ListTile(
+                                        leading: const Icon(Icons.check_circle_outline),
+                                        title: Text(t),
+                                    )).toList(),
+                                );
+                            }
+
+                            // Quran sabr
+                            if (quranRanges == null) return const SizedBox.shrink();
+                            if (quranRanges!.isEmpty) return const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('لا توجد بيانات لهذا النوع')));
+                            return Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                        Text('الأجزاء المُسبَرة:', style: Theme.of(ctx).textTheme.labelLarge),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
+                                            children: quranRanges!.map((r) {
+                                                final label = r.from == r.to ? 'الجزء ${r.from}' : 'الجزء ${r.from} - ${r.to}';
+                                                return Chip(label: Text(label));
+                                            }).toList(),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                            'النطاق الكامل: ${_formatRanges(quranRanges!)}',
+                                            style: Theme.of(ctx).textTheme.bodySmall,
+                                        ),
+                                    ],
+                                ),
+                            );
+                        }
+
+                        return SafeArea(
+                            child: Padding(
+                                padding: const EdgeInsets.only(top: 16, bottom: 16),
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                        Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                                            child: Row(children: [
+                                                Expanded(child: Text('سجل السبر - ${student.name}', style: Theme.of(ctx).textTheme.titleLarge)),
+                                                IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                                            ]),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        // Type selector
+                                        SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                                            child: Row(
+                                                children: SabrMainType.values.map((t) => Padding(
+                                                    padding: const EdgeInsets.only(left: 8),
+                                                    child: ChoiceChip(
+                                                        label: Text(t.label),
+                                                        selected: selectedType == t,
+                                                        onSelected: (_) {
+                                                            setState(() => selectedType = t);
+                                                            load(setState, t);
+                                                        },
+                                                    ),
+                                                )).toList(),
+                                            ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        const Divider(height: 1),
+                                        buildContent(),
+                                    ],
+                                ),
+                            ),
+                        );
+                    },
+                ),
+            );
+        },
+    );
+}

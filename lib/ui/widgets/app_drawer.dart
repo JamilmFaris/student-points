@@ -39,7 +39,7 @@ class AppDrawer extends StatelessWidget {
 							_ListItem(icon: Icons.fact_check, label: 'العادات', routeName: '/habits'),
 							_ListItem(icon: Icons.today, label: 'تتبع النقاط لليوم', routeName: '/tracking'),
 							_ListItem(icon: Icons.history, label: 'سجل النقاط', routeName: '/logs'),
-							_ListItem(icon: Icons.menu_book, label: 'حفظ القرآن', routeName: '/quran'),
+							_ListItem(icon: Icons.menu_book, label: 'الحفظ والسبر', routeName: '/quran'),
 							const Divider(),
 							_ListItem(icon: Icons.person, label: 'الملف الشخصي', routeName: '/profile'),
 							_ListItem(icon: Icons.settings, label: 'الإعدادات', routeName: '/settings'),

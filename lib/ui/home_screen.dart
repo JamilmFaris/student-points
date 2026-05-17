@@ -58,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
         screen: const LogsScreen(),
       ),
       _NavTab(
-        label: 'حفظ القرآن',
+        label: 'الحفظ والسبر',
         icon: Icons.menu_book_outlined,
         activeIcon: Icons.menu_book,
         screen: const MemorizationScreen(),

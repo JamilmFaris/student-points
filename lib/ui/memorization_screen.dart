@@ -4,10 +4,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../bloc/students_cubit.dart';
 import '../models/student.dart';
+import '../models/sabr_enums.dart';
 import '../repositories/student_repository.dart';
 import '../repositories/memorization_repository.dart';
 import '../repositories/habit_repository.dart';
 import '../repositories/tracking_repository.dart';
+import '../repositories/sabr_repository.dart';
 import '../services/app_mode.dart';
 import '../models/memorized_section.dart';
 import '../data/surah_names.dart';
@@ -72,10 +74,20 @@ class _MemorizationScreenState extends State<MemorizationScreen> {
                 create: (_) => StudentsCubit(StudentRepository()),
                 child: Scaffold(
                     appBar: AppBar(
-                      title: Center(child: const Text('حفظ القرآن')),
+                      title: Center(child: const Text('الحفظ والسبر')),
                       actions: const [SyncIndicator()],
                     ),
 					          drawer: const AppDrawer(),
+                    floatingActionButton: Builder(
+                        builder: (ctx) => FloatingActionButton.extended(
+                            onPressed: () {
+                                final students = ctx.read<StudentsCubit>().state.students;
+                                _showSabrSheet(ctx, students);
+                            },
+                            icon: const Icon(Icons.quiz_outlined),
+                            label: const Text('سبر'),
+                        ),
+                    ),
                     body: BlocBuilder<StudentsCubit, StudentsState>(
                         builder: (context, state) {
                             if (state.loading) return const Center(child: CircularProgressIndicator());
@@ -994,6 +1006,368 @@ Future<void> _addMultipleMemorizedSections(BuildContext context, Student student
         SnackBar(content: Text('تمت إضافة $added مقطع')),
     );
 }
+
+// ── Sabr ─────────────────────────────────────────────────────────────────────
+
+class _SabrResult {
+    final Student student;
+    final SabrMainType type;
+    final HadithType? hadithType;
+    final List<int> range; // [from, to] for quran; empty for hadith
+    const _SabrResult({
+        required this.student,
+        required this.type,
+        this.hadithType,
+        required this.range,
+    });
+}
+
+Future<void> _showSabrSheet(BuildContext context, List<Student> students) async {
+    if (students.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('لا يوجد طلاب')),
+        );
+        return;
+    }
+
+    Student selectedStudent = students.first;
+    SabrMainType selectedType = SabrMainType.awqaf;
+    HadithType selectedHadithType = HadithType.arbaeen;
+    int fromJuz = 1;
+    int toJuz = 1;
+    int singleJuz = 1;
+
+    final result = await showModalBottomSheet<_SabrResult>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+            return Directionality(
+                textDirection: TextDirection.rtl,
+                child: StatefulBuilder(
+                    builder: (ctx, setState) {
+                        final bool isRange = selectedType == SabrMainType.awqaf ||
+                            selectedType == SabrMainType.mahadTarakumi;
+
+                        return SafeArea(
+                            child: SingleChildScrollView(
+                                padding: EdgeInsets.only(
+                                    bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                                    left: 16, right: 16, top: 16,
+                                ),
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                        Row(children: [
+                                            Expanded(child: Text('إضافة سبر', style: Theme.of(ctx).textTheme.titleLarge)),
+                                            IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                                        ]),
+                                        const SizedBox(height: 12),
+                                        DropdownButtonFormField<Student>(
+                                            initialValue: selectedStudent,
+                                            decoration: const InputDecoration(labelText: 'الطالب', border: OutlineInputBorder()),
+                                            items: students.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
+                                            onChanged: (s) { if (s != null) setState(() => selectedStudent = s); },
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text('نوع السبر', style: Theme.of(ctx).textTheme.labelLarge),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                            spacing: 8,
+                                            runSpacing: 4,
+                                            children: SabrMainType.values.map((t) => ChoiceChip(
+                                                label: Text(t.label),
+                                                selected: selectedType == t,
+                                                onSelected: (_) => setState(() => selectedType = t),
+                                            )).toList(),
+                                        ),
+                                        const SizedBox(height: 20),
+                                        if (selectedType == SabrMainType.hadith) ...[
+                                            DropdownButtonFormField<HadithType>(
+                                                initialValue: selectedHadithType,
+                                                decoration: const InputDecoration(labelText: 'نوع الحديث', border: OutlineInputBorder()),
+                                                items: HadithType.values.map((h) => DropdownMenuItem(value: h, child: Text(h.label))).toList(),
+                                                onChanged: (h) { if (h != null) setState(() => selectedHadithType = h); },
+                                            ),
+                                        ] else if (selectedType == SabrMainType.mahad) ...[
+                                            Center(
+                                                child: _NumberWheelPicker(
+                                                    initialValue: singleJuz,
+                                                    label: 'الجزء',
+                                                    onChanged: (v) => singleJuz = v,
+                                                ),
+                                            ),
+                                        ] else ...[
+                                            Row(
+                                                children: [
+                                                    Expanded(
+                                                        child: _NumberWheelPicker(
+                                                            initialValue: fromJuz,
+                                                            label: 'من الجزء',
+                                                            onChanged: (v) => fromJuz = v,
+                                                        ),
+                                                    ),
+                                                    const SizedBox(width: 16),
+                                                    Expanded(
+                                                        child: _NumberWheelPicker(
+                                                            initialValue: toJuz,
+                                                            label: 'إلى الجزء',
+                                                            onChanged: (v) => toJuz = v,
+                                                        ),
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
+                                        const SizedBox(height: 20),
+                                        FilledButton(
+                                            onPressed: () async {
+                                                if (isRange && fromJuz > toJuz) {
+                                                    await showDialog<void>(
+                                                        context: ctx,
+                                                        builder: (dCtx) => AlertDialog(
+                                                            title: const Text('نطاق غير صحيح'),
+                                                            content: const Text('يجب أن يكون الجزء الأول أصغر من أو يساوي الجزء الثاني.'),
+                                                            actions: [TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('حسناً'))],
+                                                        ),
+                                                    );
+                                                    return;
+                                                }
+
+                                                final range = selectedType == SabrMainType.hadith
+                                                    ? <int>[]
+                                                    : selectedType == SabrMainType.mahad
+                                                        ? [singleJuz, singleJuz]
+                                                        : [fromJuz, toJuz];
+
+                                                final repo = SabrRepository();
+                                                String? validationError;
+                                                if (selectedType == SabrMainType.hadith) {
+                                                    validationError = await repo.validateHadithSabr(
+                                                        localStudentId: selectedStudent.id!,
+                                                        hadithType: selectedHadithType,
+                                                    );
+                                                } else if (selectedType == SabrMainType.mahad ||
+                                                           selectedType == SabrMainType.mahadTarakumi ||
+                                                           selectedType == SabrMainType.awqaf) {
+                                                    validationError = await repo.validateQuranSabr(
+                                                        localStudentId: selectedStudent.id!,
+                                                        sabrType: selectedType,
+                                                        range: range,
+                                                    );
+                                                }
+
+                                                if (!ctx.mounted) return;
+                                                if (validationError != null) {
+                                                    await showDialog<void>(
+                                                        context: ctx,
+                                                        builder: (dCtx) => AlertDialog(
+                                                            title: const Text('لا يمكن الإضافة'),
+                                                            content: Text(validationError!),
+                                                            actions: [TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('حسناً'))],
+                                                        ),
+                                                    );
+                                                    return;
+                                                }
+
+                                                if (!ctx.mounted) return;
+                                                Navigator.pop(ctx, _SabrResult(
+                                                    student: selectedStudent,
+                                                    type: selectedType,
+                                                    hadithType: selectedType == SabrMainType.hadith ? selectedHadithType : null,
+                                                    range: range,
+                                                ));
+                                            },
+                                            child: const Text('إضافة السبر'),
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        );
+                    },
+                ),
+            );
+        },
+    );
+
+    if (result == null) return;
+
+    final repo = SabrRepository();
+    try {
+        if (result.type == SabrMainType.hadith) {
+            await repo.createHadithSabr(
+                localStudentId: result.student.id!,
+                hadithType: result.hadithType!,
+            );
+        } else {
+            await repo.createQuranSabr(
+                localStudentId: result.student.id!,
+                sabrType: result.type,
+                range: result.range,
+            );
+        }
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تمت إضافة السبر بنجاح')),
+        );
+    } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('فشل إضافة السبر: $e')),
+        );
+    }
+}
+
+// ── Number Wheel Picker ───────────────────────────────────────────────────────
+
+class _NumberWheelPicker extends StatefulWidget {
+    final int initialValue; // must be in [1, 30]
+    final ValueChanged<int> onChanged;
+    final String? label;
+
+    const _NumberWheelPicker({
+        required this.initialValue,
+        required this.onChanged,
+        this.label,
+    });
+
+    @override
+    State<_NumberWheelPicker> createState() => _NumberWheelPickerState();
+}
+
+class _NumberWheelPickerState extends State<_NumberWheelPicker> {
+    late final FixedExtentScrollController _ctrl;
+    late int _selected;
+
+    static const _itemExtent = 44.0;
+    static const _visibleItems = 5;
+    static const _totalHeight = _itemExtent * _visibleItems;
+
+    @override
+    void initState() {
+        super.initState();
+        _selected = widget.initialValue.clamp(1, 30);
+        _ctrl = FixedExtentScrollController(initialItem: _selected - 1);
+    }
+
+    @override
+    void dispose() {
+        _ctrl.dispose();
+        super.dispose();
+    }
+
+    @override
+    Widget build(BuildContext context) {
+        final theme = Theme.of(context);
+        final highlightTop = (_totalHeight - _itemExtent) / 2;
+
+        return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+                if (widget.label != null) ...[
+                    Text(
+                        widget.label!,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.primary,
+                        ),
+                    ),
+                    const SizedBox(height: 6),
+                ],
+                SizedBox(
+                    height: _totalHeight,
+                    child: Stack(
+                        children: [
+                            // Selection highlight bar
+                            Positioned(
+                                left: 0, right: 0,
+                                top: highlightTop,
+                                height: _itemExtent,
+                                child: Container(
+                                    decoration: BoxDecoration(
+                                        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                            color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            // Wheel
+                            ListWheelScrollView.useDelegate(
+                                controller: _ctrl,
+                                itemExtent: _itemExtent,
+                                diameterRatio: 1.6,
+                                physics: const FixedExtentScrollPhysics(),
+                                onSelectedItemChanged: (index) {
+                                    setState(() => _selected = index + 1);
+                                    widget.onChanged(index + 1);
+                                },
+                                childDelegate: ListWheelChildBuilderDelegate(
+                                    childCount: 30,
+                                    builder: (_, index) {
+                                        final isSelected = index + 1 == _selected;
+                                        return Center(
+                                            child: AnimatedDefaultTextStyle(
+                                                duration: const Duration(milliseconds: 120),
+                                                style: TextStyle(
+                                                    fontSize: isSelected ? 22 : 16,
+                                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                    color: isSelected
+                                                        ? theme.colorScheme.primary
+                                                        : theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                                ),
+                                                child: Text('${index + 1}'),
+                                            ),
+                                        );
+                                    },
+                                ),
+                            ),
+                            // Top fade
+                            Positioned(
+                                top: 0, left: 0, right: 0,
+                                height: highlightTop,
+                                child: IgnorePointer(
+                                    child: Container(
+                                        decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                                colors: [
+                                                    theme.colorScheme.surface,
+                                                    theme.colorScheme.surface.withValues(alpha: 0),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            // Bottom fade
+                            Positioned(
+                                bottom: 0, left: 0, right: 0,
+                                height: highlightTop,
+                                child: IgnorePointer(
+                                    child: Container(
+                                        decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                                begin: Alignment.bottomCenter,
+                                                end: Alignment.topCenter,
+                                                colors: [
+                                                    theme.colorScheme.surface,
+                                                    theme.colorScheme.surface.withValues(alpha: 0),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        );
+    }
+}
+
+// ── Memorization tab list ─────────────────────────────────────────────────────
 
 class _MemTabList extends StatelessWidget {
     final List<MemorizedSection> items;
