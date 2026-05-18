@@ -6,6 +6,7 @@ import 'api/api_client.dart';
 import 'api/services/attendance_api.dart';
 import 'api/services/auth_api.dart';
 import 'api/services/habits_api.dart';
+import 'api/services/hadith_hifz_api.dart';
 import 'api/services/hifz_api.dart';
 import 'api/services/lessons_api.dart';
 import 'api/services/sabr_api.dart';
@@ -40,11 +41,13 @@ void main() {
   final lessonsApi = LessonsApi(apiClient);
   final attendanceApi = AttendanceApi(apiClient);
   final sabrApi = SabrApi(apiClient);
+  final hadithHifzApi = HadithHifzApi(apiClient);
 
   final authCubit = AuthCubit(authApi: authApi, tokenStorage: tokenStorage);
   final syncService = SyncService(
     studentsApi: studentsApi,
     hifzApi: hifzApi,
+    hadithHifzApi: hadithHifzApi,
     habitsApi: habitsApi,
     studentPointsApi: studentPointsApi,
     lessonsApi: lessonsApi,

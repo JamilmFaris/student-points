@@ -1,11 +1,15 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'dart:convert';
+
 import '../api/dto/habit_dto.dart';
+import '../api/dto/hadith_hifz_dto.dart';
 import '../api/dto/hifz_dto.dart';
 import '../api/dto/student_dto.dart';
 import '../api/services/_dio_error.dart';
 import '../api/services/attendance_api.dart';
+import '../api/services/hadith_hifz_api.dart';
 import '../api/services/habits_api.dart';
 import '../api/services/hifz_api.dart';
 import '../api/services/lessons_api.dart';
@@ -105,6 +109,7 @@ class SyncService {
   SyncService({
     required this.studentsApi,
     required this.hifzApi,
+    required this.hadithHifzApi,
     required this.habitsApi,
     required this.studentPointsApi,
     required this.lessonsApi,
@@ -117,6 +122,7 @@ class SyncService {
 
   final StudentsApi studentsApi;
   final HifzApi hifzApi;
+  final HadithHifzApi hadithHifzApi;
   final HabitsApi habitsApi;
   final StudentPointsApi studentPointsApi;
   final LessonsApi lessonsApi;
@@ -162,6 +168,7 @@ class SyncService {
     final createHifz = await _pushPendingHifz();
     final updateHifz = await _pushUpdatedHifz();
     final deleteHifz = await _pushDeletedHifz();
+    await _pushPendingHadithHifz();
     await _pushPendingQuranSabr();
     await _pushPendingHadithSabr();
     final createLessons = await _pushPendingLessons();
@@ -181,10 +188,14 @@ class SyncService {
     final hifz = fullPull
         ? await hifzApi.getAll()
         : await hifzApi.getAll(updatedSince: since);
+    final hadithHifz = fullPull
+        ? await hadithHifzApi.getAll()
+        : await hadithHifzApi.getAll(updatedSince: since);
     final habits = fullPull ? await habitsApi.getAll() : null;
     final studentPoints = fullPull ? await _getStudentPoints() : null;
     final studentStats = await _mergeStudents(db, students);
     final hifzStats = await _mergeHifz(db, hifz);
+    await _mergeHadithHifz(db, hadithHifz);
     if (habits != null) await _mergeHabits(db, habits);
     if (studentPoints != null) await _mergeStudentPoints(db, studentPoints);
 
@@ -663,6 +674,101 @@ class SyncService {
     }
   }
 
+  // ────────────────────────── hadith hifz push/pull ────────────────────────
+
+  Future<void> _pushPendingHadithHifz() async {
+    final db = await _db.database;
+    final studentRows = await db.query(
+      'students',
+      columns: ['id', 'remote_id'],
+      where: 'remote_id IS NOT NULL',
+    );
+    final remoteByLocal = <int, int>{
+      for (final r in studentRows) r['id'] as int: r['remote_id'] as int,
+    };
+
+    final rows = await db.query(
+      'hadith_hifz',
+      where: "sync_status = 'pending_create' AND remote_id IS NULL",
+    );
+    for (final row in rows) {
+      final remoteStudentId = remoteByLocal[row['student_id'] as int];
+      if (remoteStudentId == null) continue;
+      try {
+        final numbersRaw = row['hadith_numbers'] as String;
+        final numbers = (jsonDecode(numbersRaw) as List).map((e) => e as int).toList();
+        final date = row['date'] as String;
+        final dateServer = date.contains('T') ? date : '${date}T12:00:00Z';
+        final created = await hadithHifzApi.create(
+          studentId: remoteStudentId,
+          hadithNumbers: numbers,
+          date: dateServer,
+          notes: row['notes'] as String?,
+          label: row['label'] as String?,
+        );
+        await db.update(
+          'hadith_hifz',
+          {
+            'remote_id': created.id,
+            'server_updated_at': created.updatedAt,
+            'sync_status': 'synced',
+          },
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+      } on ApiException {
+        continue;
+      }
+    }
+  }
+
+  Future<void> _mergeHadithHifz(Database db, List<HadithHifzDto> remote) async {
+    await db.transaction((txn) async {
+      final localStudents = await txn.query(
+        'students',
+        columns: ['id', 'remote_id'],
+        where: 'remote_id IS NOT NULL',
+      );
+      final studentMap = <int, int>{
+        for (final r in localStudents) r['remote_id'] as int: r['id'] as int,
+      };
+
+      for (final h in remote) {
+        final existing = await txn.query(
+          'hadith_hifz',
+          where: 'remote_id = ?',
+          whereArgs: [h.id],
+          limit: 1,
+        );
+        if (h.isDeleted) {
+          if (existing.isNotEmpty) {
+            await txn.delete('hadith_hifz',
+                where: 'id = ?', whereArgs: [existing.first['id']]);
+          }
+          continue;
+        }
+        final localStudentId = studentMap[h.studentId];
+        if (localStudentId == null) continue;
+        final values = <String, Object?>{
+          'student_id': localStudentId,
+          'hadith_numbers': jsonEncode(h.hadithNumbers),
+          'notes': h.notes,
+          'label': h.label,
+          'date': h.date ?? DateTime.now().toIso8601String(),
+          'remote_id': h.id,
+          'sync_status': 'synced',
+          'server_updated_at': h.updatedAt,
+        };
+        if (existing.isEmpty) {
+          await txn.insert('hadith_hifz', values);
+        } else {
+          await txn.update('hadith_hifz', values,
+              where: 'id = ?', whereArgs: [existing.first['id']]);
+        }
+      }
+    });
+  }
+
   // ────────────────────────── lessons push ──────────────────────────
 
   /// Server requires a non-empty `subject`; substitute a date-based fallback
@@ -1132,7 +1238,7 @@ class SyncService {
   /// Returns true if any local table has rows not yet pushed to the server.
   Future<bool> hasPendingData() async {
     final db = await _db.database;
-    for (final table in ['students', 'habits', 'quran_memorization', 'daily_entries', 'lessons', 'quran_sabr', 'hadith_sabr']) {
+    for (final table in ['students', 'habits', 'quran_memorization', 'daily_entries', 'lessons', 'quran_sabr', 'hadith_sabr', 'hadith_hifz']) {
       final res = await db.rawQuery(
         "SELECT COUNT(*) as n FROM $table "
         "WHERE sync_status IN ('pending_create','pending_update','pending_delete')"
@@ -1146,7 +1252,7 @@ class SyncService {
   Future<void> clearAllLocalData() async {
     final db = await _db.database;
     await db.transaction((txn) async {
-      for (final t in ['daily_entries', 'quran_memorization', 'students', 'lessons', 'habits', 'quran_sabr', 'hadith_sabr']) {
+      for (final t in ['daily_entries', 'quran_memorization', 'hadith_hifz', 'students', 'lessons', 'habits', 'quran_sabr', 'hadith_sabr']) {
         await txn.delete(t);
       }
     });

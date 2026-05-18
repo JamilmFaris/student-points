@@ -77,6 +77,8 @@ flutter:
   assets:
     - assets/images/mosque-primary.png
     - assets/images/mosque-secondary.png
+    - assets/icons/hadith-add.png
+    - assets/icons/quran-add.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

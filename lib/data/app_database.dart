@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 17,
+			version: 18,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -150,6 +150,23 @@ class AppDatabase {
 					);
 				''');
 				await db.execute('CREATE INDEX IF NOT EXISTS idx_hadith_sabr_student ON hadith_sabr(student_id)');
+				await db.execute('''
+					CREATE TABLE IF NOT EXISTS hadith_hifz (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						student_id INTEGER NOT NULL,
+						hadith_numbers TEXT NOT NULL,
+						notes TEXT,
+						label TEXT,
+						date TEXT NOT NULL,
+						created_at TEXT NOT NULL DEFAULT (datetime('now')),
+						sync_status TEXT NOT NULL DEFAULT 'pending_create',
+						remote_id INTEGER,
+						last_modified TEXT,
+						server_updated_at TEXT,
+						FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_hadith_hifz_student ON hadith_hifz(student_id)');
 			},
 			onUpgrade: (db, oldVersion, newVersion) async {
 			// All ALTER TABLE calls are guarded with PRAGMA table_info checks so that
@@ -377,6 +394,26 @@ class AppDatabase {
 				''');
 				await db.execute('CREATE INDEX IF NOT EXISTS idx_hadith_sabr_student ON hadith_sabr(student_id)');
 			}
+			// v18: hadith_hifz table — stores memorized hadith entries per student.
+			if (oldVersion < 18) {
+				await db.execute('''
+					CREATE TABLE IF NOT EXISTS hadith_hifz (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						student_id INTEGER NOT NULL,
+						hadith_numbers TEXT NOT NULL,
+						notes TEXT,
+						label TEXT,
+						date TEXT NOT NULL,
+						created_at TEXT NOT NULL DEFAULT (datetime('now')),
+						sync_status TEXT NOT NULL DEFAULT 'pending_create',
+						remote_id INTEGER,
+						last_modified TEXT,
+						server_updated_at TEXT,
+						FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+					);
+				''');
+				await db.execute('CREATE INDEX IF NOT EXISTS idx_hadith_hifz_student ON hadith_hifz(student_id)');
+			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
 			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
@@ -553,6 +590,24 @@ class AppDatabase {
 						);
 					''');
 					await db.execute('CREATE INDEX IF NOT EXISTS idx_hadith_sabr_student ON hadith_sabr(student_id)');
+						// Defensive: ensure hadith_hifz table exists
+						await db.execute('''
+							CREATE TABLE IF NOT EXISTS hadith_hifz (
+								id INTEGER PRIMARY KEY AUTOINCREMENT,
+								student_id INTEGER NOT NULL,
+								hadith_numbers TEXT NOT NULL,
+								notes TEXT,
+								label TEXT,
+								date TEXT NOT NULL,
+								created_at TEXT NOT NULL DEFAULT (datetime('now')),
+								sync_status TEXT NOT NULL DEFAULT 'pending_create',
+								remote_id INTEGER,
+								last_modified TEXT,
+								server_updated_at TEXT,
+								FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+							);
+						''');
+						await db.execute('CREATE INDEX IF NOT EXISTS idx_hadith_hifz_student ON hadith_hifz(student_id)');
 			},
 		);
 	}

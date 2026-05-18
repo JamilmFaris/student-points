@@ -5,8 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../bloc/students_cubit.dart';
 import '../models/student.dart';
 import '../models/sabr_enums.dart';
+import '../models/hadith_hifz_section.dart';
 import '../repositories/student_repository.dart';
 import '../repositories/memorization_repository.dart';
+import '../repositories/hadith_hifz_repository.dart';
 import '../repositories/habit_repository.dart';
 import '../repositories/tracking_repository.dart';
 import '../repositories/sabr_repository.dart';
@@ -17,6 +19,8 @@ import '../data/juz_data.dart';
 
 import 'widgets/app_drawer.dart';
 import 'widgets/sync_indicator.dart' show SyncIndicator;
+
+const int kHadithCount = 42;
 
 const _kThunderTipKey = 'memorization_thunder_tip_seen';
 
@@ -102,7 +106,7 @@ class _MemorizationScreenState extends State<MemorizationScreen> {
                                     final isFirst = index == 0;
                                     return ListTile(
                                         title: Text(s.name),
-                                        onTap: () => _showSurahsOverview(context, s),
+                                        onTap: () => _showHifzOverview(context, s),
                                         trailing: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
@@ -112,9 +116,14 @@ class _MemorizationScreenState extends State<MemorizationScreen> {
                                                     onPressed: () => _showHistory(context, s),
                                                 ),
                                                 IconButton(
-                                                    tooltip: 'إضافة حفظ',
-                                                    icon: const Icon(Icons.add),
+                                                    tooltip: 'إضافة حفظ قرآن',
+                                                    icon: Image.asset('assets/icons/quran-add.png', width: 40, height: 40),
                                                     onPressed: () => _addMemorizedSection(context, s),
+                                                ),
+                                                IconButton(
+                                                    tooltip: 'إضافة حفظ حديث',
+                                                    icon: Image.asset('assets/icons/hadith-add.png', width: 40, height: 40),
+                                                    onPressed: () => _addHadithHifzSection(context, s),
                                                 ),
                                                 IconButton(
                                                     key: isFirst ? _thunderIconKey : null,
@@ -365,10 +374,36 @@ List<({int from, int to})> _mergeRanges(List<({int from, int to})> ranges) {
     return merged;
 }
 
-Future<void> _showSurahsOverview(BuildContext context, Student student) async {
-    final repo = MemorizationRepository();
-    final sections = await repo.listForStudent(student.id!);
-    // Group by surah, merge ranges, then split by juz
+// ── Hadith number helpers ─────────────────────────────────────────────────────
+
+List<({int from, int to})> _mergeHadithNumbers(List<int> numbers) {
+    if (numbers.isEmpty) return [];
+    final deduped = numbers.toSet().toList()..sort();
+    final ranges = <({int from, int to})>[];
+    int start = deduped[0];
+    int end = deduped[0];
+    for (int i = 1; i < deduped.length; i++) {
+        if (deduped[i] == end + 1) {
+            end = deduped[i];
+        } else {
+            ranges.add((from: start, to: end));
+            start = deduped[i];
+            end = deduped[i];
+        }
+    }
+    ranges.add((from: start, to: end));
+    return ranges;
+}
+
+// ── Combined hifz overview (Quran + Hadith tabs) ──────────────────────────────
+
+Future<void> _showHifzOverview(BuildContext context, Student student) async {
+    final quranRepo = MemorizationRepository();
+    final hadithRepo = HadithHifzRepository();
+    final sections = await quranRepo.listForStudent(student.id!);
+    final hadithSections = await hadithRepo.listForStudent(student.id!);
+
+    // — Quran: same processing as before —
     final Map<int, List<({int from, int to})>> bySurah = {};
     for (final m in sections) {
         bySurah.putIfAbsent(m.surahIndex, () => []).add((from: m.ayahFrom, to: m.ayahTo));
@@ -377,24 +412,28 @@ Future<void> _showSurahsOverview(BuildContext context, Student student) async {
     for (final e in bySurah.entries) {
         consolidated[e.key] = _mergeRanges(e.value);
     }
-    // Group by juz: juz -> [(surahIndex, ranges)]
     final Map<int, Map<int, List<({int from, int to})>>> byJuz = {};
     for (final e in consolidated.entries) {
         for (final r in e.value) {
             for (final seg in splitRangeByJuz(e.key, r.from, r.to)) {
                 byJuz.putIfAbsent(seg.juz, () => {});
-                final juzSurahs = byJuz[seg.juz]!;
-                juzSurahs.putIfAbsent(e.key, () => []).add((from: seg.from, to: seg.to));
+                byJuz[seg.juz]!.putIfAbsent(e.key, () => []).add((from: seg.from, to: seg.to));
             }
         }
     }
-    // Merge overlapping ranges within each surah per juz
     for (final juzSurahs in byJuz.values) {
         for (final surah in juzSurahs.keys.toList()) {
             juzSurahs[surah] = _mergeRanges(juzSurahs[surah]!);
         }
     }
     final juzIndices = byJuz.keys.toList()..sort();
+
+    // — Hadith: collect all numbers, merge into ranges —
+    final allHadithNumbers = <int>[];
+    for (final h in hadithSections) {
+        allHadithNumbers.addAll(h.hadithNumbers);
+    }
+    final hadithRanges = _mergeHadithNumbers(allHadithNumbers);
 
     if (!context.mounted) return;
     showModalBottomSheet(
@@ -403,65 +442,324 @@ Future<void> _showSurahsOverview(BuildContext context, Student student) async {
         builder: (ctx) {
             return Directionality(
                 textDirection: TextDirection.rtl,
-                child: SafeArea(
-                    child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                                Row(children: [
-                                    Expanded(
-                                        child: Text(
-                                            'السور المحفوظة - ${student.name}',
-                                            style: Theme.of(ctx).textTheme.titleLarge,
+                child: DefaultTabController(
+                    length: 2,
+                    child: SafeArea(
+                        child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                    Row(children: [
+                                        Expanded(
+                                            child: Text(
+                                                'الحفظ - ${student.name}',
+                                                style: Theme.of(ctx).textTheme.titleLarge,
+                                            ),
                                         ),
+                                        IconButton(
+                                            onPressed: () => Navigator.pop(ctx),
+                                            icon: const Icon(Icons.close),
+                                        ),
+                                    ]),
+                                    const TabBar(
+                                        tabs: [
+                                            Tab(text: 'السور المحفوظة'),
+                                            Tab(text: 'الأحاديث المحفوظة'),
+                                        ],
                                     ),
-                                    IconButton(
-                                        onPressed: () => Navigator.pop(ctx),
-                                        icon: const Icon(Icons.close),
-                                    ),
-                                ]),
-                                const SizedBox(height: 8),
-                                if (juzIndices.isEmpty)
-                                    const Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 24),
-                                        child: Center(child: Text('لا توجد سور محفوظة')),
-                                    )
-                                else
+                                    const SizedBox(height: 8),
                                     ConstrainedBox(
-                                        constraints: const BoxConstraints(maxHeight: 500),
-                                        child: ListView.builder(
-                                            shrinkWrap: true,
-                                            itemCount: juzIndices.length,
-                                            itemBuilder: (_, i) {
-                                                final juz = juzIndices[i];
-                                                final surahs = byJuz[juz]!;
-                                                final surahKeys = surahs.keys.toList()..sort();
-                                                return ExpansionTile(
-                                                    title: Text('الجزء $juz'),
-                                                    children: surahKeys.map((idx) {
-                                                        final ranges = surahs[idx]!;
-                                                        final rangeStr = ranges
-                                                            .map((r) => r.from == r.to ? '${r.from}' : '${r.from} - ${r.to}')
-                                                            .join(' ، ');
-                                                        return ListTile(
-                                                            dense: true,
-                                                            leading: CircleAvatar(child: Text('$idx')),
-                                                            title: Text(surahNameByIndex(idx)),
-                                                            subtitle: Text('الآيات: $rangeStr'),
-                                                        );
-                                                    }).toList(),
-                                                );
-                                            },
+                                        constraints: const BoxConstraints(maxHeight: 480),
+                                        child: TabBarView(
+                                            children: [
+                                                // — Quran tab —
+                                                juzIndices.isEmpty
+                                                    ? const Center(child: Padding(
+                                                        padding: EdgeInsets.symmetric(vertical: 24),
+                                                        child: Text('لا توجد سور محفوظة'),
+                                                    ))
+                                                    : ListView.builder(
+                                                        shrinkWrap: true,
+                                                        itemCount: juzIndices.length,
+                                                        itemBuilder: (_, i) {
+                                                            final juz = juzIndices[i];
+                                                            final surahs = byJuz[juz]!;
+                                                            final surahKeys = surahs.keys.toList()..sort();
+                                                            return ExpansionTile(
+                                                                title: Text('الجزء $juz'),
+                                                                children: surahKeys.map((idx) {
+                                                                    final ranges = surahs[idx]!;
+                                                                    final rangeStr = ranges
+                                                                        .map((r) => r.from == r.to ? '${r.from}' : '${r.from} - ${r.to}')
+                                                                        .join(' ، ');
+                                                                    return ListTile(
+                                                                        dense: true,
+                                                                        leading: CircleAvatar(child: Text('$idx')),
+                                                                        title: Text(surahNameByIndex(idx)),
+                                                                        subtitle: Text('الآيات: $rangeStr'),
+                                                                    );
+                                                                }).toList(),
+                                                            );
+                                                        },
+                                                    ),
+                                                // — Hadith tab —
+                                                hadithRanges.isEmpty
+                                                    ? const Center(child: Padding(
+                                                        padding: EdgeInsets.symmetric(vertical: 24),
+                                                        child: Text('لا توجد أحاديث محفوظة'),
+                                                    ))
+                                                    : ListView(
+                                                        shrinkWrap: true,
+                                                        children: [
+                                                            const SizedBox(height: 8),
+                                                            Wrap(
+                                                                spacing: 8,
+                                                                runSpacing: 8,
+                                                                children: hadithRanges.map((r) {
+                                                                    final label = r.from == r.to
+                                                                        ? 'حديث ${r.from}'
+                                                                        : 'حديث ${r.from} - ${r.to}';
+                                                                    return Chip(label: Text(label));
+                                                                }).toList(),
+                                                            ),
+                                                            const SizedBox(height: 8),
+                                                            Text(
+                                                                'إجمالي الأحاديث المحفوظة: ${allHadithNumbers.toSet().length}',
+                                                                style: Theme.of(ctx).textTheme.bodySmall,
+                                                            ),
+                                                        ],
+                                                    ),
+                                            ],
                                         ),
                                     ),
-                            ],
+                                ],
+                            ),
                         ),
                     ),
                 ),
             );
         },
+    );
+}
+
+// ── Add hadith hifz ───────────────────────────────────────────────────────────
+
+Future<void> _addHadithHifzSection(BuildContext context, Student student) async {
+    final selected = <int>{};
+    DateTime date = DateTime.now();
+    String? label = 'حفظ';
+    final notesController = TextEditingController();
+    int fromHadith = 1;
+    int toHadith = 1;
+
+    String toIsoDate(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+    final confirmed = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+            return Directionality(
+                textDirection: TextDirection.rtl,
+                child: StatefulBuilder(
+                    builder: (ctx, setState) {
+                        String dateStr() => toIsoDate(date);
+                        return SafeArea(
+                            child: SingleChildScrollView(
+                                padding: EdgeInsets.only(
+                                    bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                                    left: 16, right: 16, top: 16,
+                                ),
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                        Row(children: [
+                                            Expanded(child: Text('إضافة حفظ حديث - ${student.name}', style: Theme.of(ctx).textTheme.titleLarge)),
+                                            IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                                        ]),
+                                        const SizedBox(height: 12),
+                                        InkWell(
+                                            onTap: () async {
+                                                final picked = await showDatePicker(
+                                                    context: ctx,
+                                                    firstDate: DateTime(2000, 1, 1),
+                                                    lastDate: DateTime.now(),
+                                                    initialDate: date,
+                                                );
+                                                if (picked != null) setState(() => date = picked);
+                                            },
+                                            child: InputDecorator(
+                                                decoration: const InputDecoration(labelText: 'تاريخ الحفظ'),
+                                                child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                        Text(dateStr(), textDirection: TextDirection.ltr),
+                                                        const Icon(Icons.calendar_today),
+                                                    ],
+                                                ),
+                                            ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        InputDecorator(
+                                            decoration: const InputDecoration(labelText: 'النوع'),
+                                            child: Wrap(
+                                                spacing: 8,
+                                                children: [
+                                                    ChoiceChip(label: const Text('حفظ'), selected: (label ?? 'حفظ') == 'حفظ', onSelected: (_) => setState(() => label = 'حفظ')),
+                                                    ChoiceChip(label: const Text('مراجعة'), selected: label == 'مراجعة', onSelected: (_) => setState(() => label = 'مراجعة')),
+                                                    ChoiceChip(label: const Text('تثبيت'), selected: label == 'تثبيت', onSelected: (_) => setState(() => label = 'تثبيت')),
+                                                ],
+                                            ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        TextField(
+                                            controller: notesController,
+                                            decoration: const InputDecoration(labelText: 'ملاحظات'),
+                                            maxLines: 2,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        DefaultTabController(
+                                            length: 2,
+                                            child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                    const TabBar(tabs: [Tab(text: 'فردي'), Tab(text: 'نطاق')]),
+                                                    const SizedBox(height: 8),
+                                                    SizedBox(
+                                                        height: 260,
+                                                        child: TabBarView(
+                                                            children: [
+                                                                // — Individual selection grid —
+                                                                GridView.builder(
+                                                                    shrinkWrap: true,
+                                                                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                                                        crossAxisCount: 7,
+                                                                        mainAxisSpacing: 4,
+                                                                        crossAxisSpacing: 4,
+                                                                        childAspectRatio: 1,
+                                                                    ),
+                                                                    itemCount: kHadithCount,
+                                                                    itemBuilder: (_, i) {
+                                                                        final n = i + 1;
+                                                                        final isSel = selected.contains(n);
+                                                                        return GestureDetector(
+                                                                            onTap: () => setState(() {
+                                                                                if (isSel) { selected.remove(n); } else { selected.add(n); }
+                                                                            }),
+                                                                            child: Container(
+                                                                                decoration: BoxDecoration(
+                                                                                    color: isSel
+                                                                                        ? Theme.of(ctx).colorScheme.primary
+                                                                                        : Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                                                                                    borderRadius: BorderRadius.circular(6),
+                                                                                ),
+                                                                                alignment: Alignment.center,
+                                                                                child: Text(
+                                                                                    '$n',
+                                                                                    style: TextStyle(
+                                                                                        fontWeight: FontWeight.bold,
+                                                                                        color: isSel
+                                                                                            ? Theme.of(ctx).colorScheme.onPrimary
+                                                                                            : Theme.of(ctx).colorScheme.onSurface,
+                                                                                    ),
+                                                                                ),
+                                                                            ),
+                                                                        );
+                                                                    },
+                                                                ),
+                                                                // — Range selection —
+                                                                Column(
+                                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                                    children: [
+                                                                        Row(
+                                                                            children: [
+                                                                                Expanded(
+                                                                                    child: _NumberWheelPicker(
+                                                                                        initialValue: fromHadith,
+                                                                                        max: kHadithCount,
+                                                                                        visibleItems: 3,
+                                                                                        label: 'من الحديث',
+                                                                                        onChanged: (v) => fromHadith = v,
+                                                                                    ),
+                                                                                ),
+                                                                                const SizedBox(width: 16),
+                                                                                Expanded(
+                                                                                    child: _NumberWheelPicker(
+                                                                                        initialValue: toHadith,
+                                                                                        max: kHadithCount,
+                                                                                        visibleItems: 3,
+                                                                                        label: 'إلى الحديث',
+                                                                                        onChanged: (v) => toHadith = v,
+                                                                                    ),
+                                                                                ),
+                                                                            ],
+                                                                        ),
+                                                                        const SizedBox(height: 16),
+                                                                        OutlinedButton.icon(
+                                                                            onPressed: () {
+                                                                                final lo = fromHadith < toHadith ? fromHadith : toHadith;
+                                                                                final hi = fromHadith > toHadith ? fromHadith : toHadith;
+                                                                                setState(() {
+                                                                                    for (int n = lo; n <= hi; n++) { selected.add(n); }
+                                                                                });
+                                                                            },
+                                                                            icon: const Icon(Icons.check_circle_outline),
+                                                                            label: const Text('تحديد النطاق'),
+                                                                        ),
+                                                                    ],
+                                                                ),
+                                                            ],
+                                                        ),
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                                Text(
+                                                    'المحدد: ${selected.length} حديث',
+                                                    style: Theme.of(ctx).textTheme.bodySmall,
+                                                ),
+                                                FilledButton.icon(
+                                                    icon: const Icon(Icons.add),
+                                                    label: const Text('إضافة المحدد'),
+                                                    onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx, true),
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        );
+                    },
+                ),
+            );
+        },
+    ).whenComplete(() => notesController.dispose());
+
+    if (confirmed != true || selected.isEmpty) return;
+
+    final repo = HadithHifzRepository();
+    final sortedNumbers = selected.toList()..sort();
+    final memorizedOn = toIsoDate(date);
+    await repo.insert(HadithHifzSection(
+        studentId: student.id!,
+        hadithNumbers: sortedNumbers,
+        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        label: label ?? 'حفظ',
+        date: '${memorizedOn}T12:00:00',
+        createdAt: DateTime.now().toIso8601String(),
+    ));
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تمت إضافة ${sortedNumbers.length} حديث')),
     );
 }
 
@@ -1220,12 +1518,16 @@ Future<void> _showSabrSheet(BuildContext context, List<Student> students) async 
 // ── Number Wheel Picker ───────────────────────────────────────────────────────
 
 class _NumberWheelPicker extends StatefulWidget {
-    final int initialValue; // must be in [1, 30]
+    final int initialValue;
+    final int max;
+    final int visibleItems;
     final ValueChanged<int> onChanged;
     final String? label;
 
     const _NumberWheelPicker({
         required this.initialValue,
+        this.max = 30,
+        this.visibleItems = 5,
         required this.onChanged,
         this.label,
     });
@@ -1239,13 +1541,11 @@ class _NumberWheelPickerState extends State<_NumberWheelPicker> {
     late int _selected;
 
     static const _itemExtent = 44.0;
-    static const _visibleItems = 5;
-    static const _totalHeight = _itemExtent * _visibleItems;
 
     @override
     void initState() {
         super.initState();
-        _selected = widget.initialValue.clamp(1, 30);
+        _selected = widget.initialValue.clamp(1, widget.max);
         _ctrl = FixedExtentScrollController(initialItem: _selected - 1);
     }
 
@@ -1258,7 +1558,8 @@ class _NumberWheelPickerState extends State<_NumberWheelPicker> {
     @override
     Widget build(BuildContext context) {
         final theme = Theme.of(context);
-        final highlightTop = (_totalHeight - _itemExtent) / 2;
+        final totalHeight = _itemExtent * widget.visibleItems;
+        final highlightTop = (totalHeight - _itemExtent) / 2;
 
         return Column(
             mainAxisSize: MainAxisSize.min,
@@ -1273,7 +1574,7 @@ class _NumberWheelPickerState extends State<_NumberWheelPicker> {
                     const SizedBox(height: 6),
                 ],
                 SizedBox(
-                    height: _totalHeight,
+                    height: totalHeight,
                     child: Stack(
                         children: [
                             // Selection highlight bar
@@ -1302,7 +1603,7 @@ class _NumberWheelPickerState extends State<_NumberWheelPicker> {
                                     widget.onChanged(index + 1);
                                 },
                                 childDelegate: ListWheelChildBuilderDelegate(
-                                    childCount: 30,
+                                    childCount: widget.max,
                                     builder: (_, index) {
                                         final isSelected = index + 1 == _selected;
                                         return Center(
