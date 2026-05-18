@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../api/dto/user_dto.dart';
@@ -36,17 +38,28 @@ class AuthCubit extends Cubit<AuthState> {
   final AuthApi authApi;
   final TokenStorage tokenStorage;
 
-  /// Called from app start: if tokens exist, fetch /me/. Otherwise unauthenticated.
+  /// Called from app start: restores session from storage without a network
+  /// round-trip. Expiry is caught lazily by [forceUnauthenticated] when the
+  /// first real API call (e.g. sync) fails after a failed token refresh.
   Future<void> restore() async {
     if (!await tokenStorage.hasTokens()) {
       emit(const AuthState.unauthenticated());
       return;
     }
+    final userJson = await tokenStorage.readUserJson();
+    if (userJson != null) {
+      try {
+        final user = UserDto.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+        emit(AuthState.authenticated(user));
+        return;
+      } catch (_) {}
+    }
+    // Tokens exist but no cached user (first run after this change) — fetch once.
     try {
       final user = await authApi.me();
+      await tokenStorage.saveUserJson(jsonEncode(user.toJson()));
       emit(AuthState.authenticated(user));
     } on AuthApiException {
-      // Token rejected (e.g. token_version bumped on another device).
       await tokenStorage.clear();
       emit(const AuthState.unauthenticated());
     }
@@ -58,6 +71,7 @@ class AuthCubit extends Cubit<AuthState> {
       final pair = await authApi.login(username, password);
       await tokenStorage.save(access: pair.access, refresh: pair.refresh);
       final user = await authApi.me();
+      await tokenStorage.saveUserJson(jsonEncode(user.toJson()));
       emit(AuthState.authenticated(user));
     } on AuthApiException catch (e) {
       await tokenStorage.clear();
@@ -102,6 +116,7 @@ class AuthCubit extends Cubit<AuthState> {
       dateOfBirth: dateOfBirth,
       certificates: certificates,
     );
+    await tokenStorage.saveUserJson(jsonEncode(updated.toJson()));
     emit(AuthState.authenticated(updated));
     return updated;
   }
