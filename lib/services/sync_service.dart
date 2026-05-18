@@ -806,6 +806,9 @@ class SyncService {
       } on ApiException {
         failed++;
         continue;
+      } catch (_) {
+        failed++;
+        continue;
       }
     }
     return _PushStats(pushed: pushed, failed: failed);
@@ -836,7 +839,21 @@ class SyncService {
           whereArgs: [row['id']],
         );
         pushed++;
-      } on ApiException {
+      } on ApiException catch (e) {
+        // 404 means the lesson was deleted on the server. Reset to
+        // pending_create (clearing remote_id) so it gets re-created on the
+        // next sync rather than failing indefinitely.
+        if (e.statusCode == 404) {
+          await db.update(
+            'lessons',
+            {'sync_status': 'pending_create', 'remote_id': null},
+            where: 'id = ?',
+            whereArgs: [row['id']],
+          );
+        }
+        failed++;
+        continue;
+      } catch (_) {
         failed++;
         continue;
       }

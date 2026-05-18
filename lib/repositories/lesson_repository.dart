@@ -34,6 +34,12 @@ class LessonRepository {
       },
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
+    // id == 0 means the insert was ignored (another concurrent call already
+    // inserted the row). Query again to get the real local id.
+    if (id == 0) {
+      final retry = await getByDate(dateIso);
+      if (retry != null) return retry;
+    }
     return Lesson(id: id, date: dateIso, subject: '');
   }
 

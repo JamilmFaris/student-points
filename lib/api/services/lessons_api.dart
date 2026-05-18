@@ -29,7 +29,10 @@ class LessonsApi {
       if ((res.statusCode == 200 || res.statusCode == 202) && res.data is Map) {
         return LessonDto.fromJson(Map<String, dynamic>.from(res.data as Map));
       }
-      throw ApiException(extractDrfError(res) ?? 'فشل تحديث الدرس');
+      throw ApiException(
+        extractDrfError(res) ?? 'فشل تحديث الدرس',
+        statusCode: res.statusCode,
+      );
     } on DioException catch (e) {
       throw toApiException(e);
     }

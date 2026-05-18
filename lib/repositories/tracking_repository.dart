@@ -147,6 +147,23 @@ class TrackingRepository {
 		final d = date.toIso8601String().substring(0, 10);
 		final nowIso = DateTime.now().toUtc().toIso8601String();
 		await db.transaction((txn) async {
+			// Snapshot sync state before deleting. Entries already on the server
+			// that haven't changed value should stay 'synced' so they are not
+			// re-uploaded on the next sync (one request per entry, N×M requests).
+			final existing = await txn.query(
+				'daily_entries',
+				columns: ['student_id', 'habit_id', 'points_earned', 'sync_status'],
+				where: 'date = ?',
+				whereArgs: [d],
+			);
+			final prevStatus = <String, String>{};
+			final prevPoints = <String, int>{};
+			for (final r in existing) {
+				final k = '${r['student_id']}-${r['habit_id']}';
+				prevStatus[k] = (r['sync_status'] as String?) ?? 'pending_create';
+				prevPoints[k] = (r['points_earned'] as int?) ?? 0;
+			}
+
 			await txn.delete('daily_entries', where: 'date = ?', whereArgs: [d]);
 			for (final entry in pointsByStudentHabit.entries) {
 				final studentId = entry.key;
@@ -155,13 +172,19 @@ class TrackingRepository {
 					final habitId = h.key;
 					final points = h.value;
 					if (points == 0) continue;
+					final k = '$studentId-$habitId';
+					// Keep 'synced' only when the entry was already on the server
+					// AND the value is unchanged — no HTTP request needed.
+					final syncStatus = (prevStatus[k] == 'synced' && prevPoints[k] == points)
+						? 'synced'
+						: 'pending_create';
 					await txn.insert('daily_entries', {
 						'date': d,
 						'student_id': studentId,
 						'habit_id': habitId,
-						'count': points, // Store points as count for compatibility
+						'count': points,
 						'points_earned': points,
-						'sync_status': 'pending_create',
+						'sync_status': syncStatus,
 						'last_modified': nowIso,
 					});
 				}
