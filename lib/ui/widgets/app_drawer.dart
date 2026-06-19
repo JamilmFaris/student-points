@@ -76,7 +76,13 @@ class _ListItem extends StatelessWidget {
 			title: Text(label),
 			onTap: () {
 				Navigator.pop(context);
-				Navigator.pushNamed(context, routeName);
+				if (routeName == '/home') {
+					// Pop all pushed routes back to the root HomeScreen
+					// instead of stacking another /home on top.
+					Navigator.popUntil(context, (route) => route.isFirst);
+				} else {
+					Navigator.pushNamed(context, routeName);
+				}
 			},
 		);
 	}
