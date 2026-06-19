@@ -50,6 +50,8 @@ dependencies:
   dio: ^5.4.0
   flutter_secure_storage: ^9.2.0
   connectivity_plus: ^6.0.0
+  pdf: ^3.11.1
+  printing: ^5.13.2
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,7 @@ import '../models/student.dart';
 import '../repositories/habit_repository.dart';
 import '../repositories/student_repository.dart';
 import '../repositories/tracking_repository.dart';
+import '../services/export_service.dart';
 
 import 'widgets/app_drawer.dart';
 import 'widgets/sync_indicator.dart' show SyncIndicator;
@@ -53,6 +54,26 @@ class LogsScreen extends StatelessWidget {
 
 class _DailyTab extends StatelessWidget {
 	const _DailyTab();
+
+	Future<void> _exportDay(BuildContext context, DateTime date) async {
+		try {
+			final students = await StudentRepository().getAll();
+			final habits = await HabitRepository().getAll();
+			final points = await TrackingRepository().getDayPointsBreakdown(date);
+			final dateStr = date.toIso8601String().substring(0, 10);
+			await ExportService.exportDayBreakdownPdf(
+				students: students,
+				habits: habits,
+				points: points,
+				dateLabel: dateStr,
+				suggestedFileName: 'نقاط_$dateStr.pdf',
+			);
+		} catch (e) {
+			if (context.mounted) {
+				ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل التصدير: $e')));
+			}
+		}
+	}
 
 	@override
 	Widget build(BuildContext context) {
@@ -108,6 +129,11 @@ class _DailyTab extends StatelessWidget {
 														builder: (_) => _DayBreakdownDialog(date: date),
 													);
 												},
+											),
+											IconButton(
+												icon: const Icon(Icons.download),
+												tooltip: 'تصدير',
+												onPressed: () => _exportDay(context, DateTime.parse(d)),
 											),
 											if (isSelected)
 												Chip(
@@ -199,6 +225,30 @@ class _MonthlyTabState extends State<_MonthlyTab> {
 									icon: const Icon(Icons.visibility),
 									label: const Text('عرض'),
 								),
+								BlocBuilder<LogsCubit, LogsState>(
+									builder: (context, state) {
+										if (state.monthlyTotals.isEmpty) return const SizedBox.shrink();
+										return IconButton(
+											icon: const Icon(Icons.download),
+											tooltip: 'تصدير',
+											onPressed: () async {
+												try {
+													final students = await StudentRepository().getAll();
+													await ExportService.exportTotalsPdf(
+														totals: state.monthlyTotals,
+														students: students,
+														title: 'نقاط شهر $month / $year',
+														suggestedFileName: 'نقاط_${year}_$month.pdf',
+													);
+												} catch (e) {
+													if (context.mounted) {
+														ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل التصدير: $e')));
+													}
+												}
+											},
+										);
+									},
+								),
 							],
 						),
 					),
@@ -243,16 +293,43 @@ class _RangeTabState extends State<_RangeTab> {
 		return Column(children: [
 			Padding(
 				padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-				child: Row(children: [
-					FilledButton.icon(
-						onPressed: () => _pickRange(context),
-						icon: const Icon(Icons.date_range),
-						label: const Text('اختيار النطاق'),
-					),
-					const SizedBox(width: 12),
-					if (start != null && end != null)
-						Chip(label: Text('${start!.toIso8601String().substring(0, 10)} → ${end!.toIso8601String().substring(0, 10)}')),
-				]),
+				child: Column(
+					crossAxisAlignment: CrossAxisAlignment.center,
+					children: [
+						Row(children: [
+							FilledButton.icon(
+								onPressed: () => _pickRange(context),
+								icon: const Icon(Icons.date_range),
+								label: const Text('اختيار النطاق'),
+							),
+							const SizedBox(width: 12),
+							if (start != null && end != null)
+								Chip(label: Text('${start!.toIso8601String().substring(0, 10)} → ${end!.toIso8601String().substring(0, 10)}')),
+						]),
+						if (totals != null && !loading)
+							FilledButton.icon(
+								icon: const Icon(Icons.download),
+								label: const Text('تصدير PDF'),
+								onPressed: () async {
+									try {
+										final students = await StudentRepository().getAll();
+										final s = start!.toIso8601String().substring(0, 10);
+										final e = end!.toIso8601String().substring(0, 10);
+										await ExportService.exportTotalsPdf(
+											totals: totals!,
+											students: students,
+											title: 'نقاط الفترة: $s → $e',
+											suggestedFileName: 'نقاط_${s}_$e.pdf',
+										);
+									} catch (err) {
+										if (context.mounted) {
+											ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل التصدير: $err')));
+										}
+									}
+								},
+							),
+					],
+				),
 			),
 			if (totals == null && !loading)
 				Padding(
