@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TokenStorage {
@@ -10,8 +11,25 @@ class TokenStorage {
 
   final FlutterSecureStorage _storage;
 
-  Future<String?> readAccess() => _storage.read(key: _accessKey);
-  Future<String?> readRefresh() => _storage.read(key: _refreshKey);
+  // Keystore can fail with PlatformException (bad padding, unwrap failure)
+  // after reinstall or key corruption. Treat as missing rather than crashing.
+  Future<String?> _safeRead(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } on PlatformException {
+      await _safeDeleteAll();
+      return null;
+    }
+  }
+
+  Future<void> _safeDeleteAll() async {
+    try {
+      await _storage.deleteAll();
+    } catch (_) {}
+  }
+
+  Future<String?> readAccess() => _safeRead(_accessKey);
+  Future<String?> readRefresh() => _safeRead(_refreshKey);
 
   Future<void> save({required String access, required String refresh}) async {
     await _storage.write(key: _accessKey, value: access);
@@ -24,7 +42,7 @@ class TokenStorage {
   Future<void> saveUserJson(String json) =>
       _storage.write(key: _userKey, value: json);
 
-  Future<String?> readUserJson() => _storage.read(key: _userKey);
+  Future<String?> readUserJson() => _safeRead(_userKey);
 
   Future<void> clear() async {
     await _storage.delete(key: _accessKey);
