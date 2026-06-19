@@ -23,7 +23,7 @@ class HabitDto {
         name: (json['name'] ?? '') as String,
         points: (json['points'] as int?) ?? 5,
         minusPoints: (json['minusPoints'] as int?) ?? 5,
-        allowNegative: true,
-        oncePerDay: false,
+        allowNegative: (json['allowNegative'] as bool?) ?? (json['allow_negative'] as bool?) ?? false,
+        oncePerDay: (json['oncePerDay'] as bool?) ?? (json['once_per_day'] as bool?) ?? false,
       );
 }

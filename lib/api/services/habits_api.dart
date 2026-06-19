@@ -27,13 +27,15 @@ class HabitsApi {
   }
 
   /// `POST /api/habits/`. Creates a new habit.
-  Future<HabitDto> create(String name, int points, int minusPoints) async {
+  Future<HabitDto> create(String name, int points, int minusPoints, {bool allowNegative = false, bool oncePerDay = false}) async {
     try {
       final body = {
         'name': name,
         'description': name,
         'points': points,
         'minusPoints': minusPoints,
+        'allowNegative': allowNegative,
+        'oncePerDay': oncePerDay,
       };
       final res = await _dio.post('/api/habits/', data: body);
       if (res.statusCode == 201 && res.data is Map) {
@@ -46,13 +48,15 @@ class HabitsApi {
   }
 
   /// `PATCH /api/habits/{id}/`. Updates an existing habit.
-  Future<HabitDto> update(int remoteId, String name, int points, int minusPoints) async {
+  Future<HabitDto> update(int remoteId, String name, int points, int minusPoints, {bool allowNegative = false, bool oncePerDay = false}) async {
     try {
       final body = {
         'name': name,
         'description': name,
         'points': points,
         'minusPoints': minusPoints,
+        'allowNegative': allowNegative,
+        'oncePerDay': oncePerDay,
       };
       final res = await _dio.patch('/api/habits/$remoteId/', data: body);
       if ((res.statusCode == 200 || res.statusCode == 202) && res.data is Map) {

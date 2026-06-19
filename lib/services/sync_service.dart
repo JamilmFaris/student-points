@@ -457,6 +457,8 @@ class SyncService {
           row['name'] as String,
           row['points'] as int,
           row['decrease_points'] as int,
+          allowNegative: (row['allow_negative'] as int?) == 1,
+          oncePerDay: (row['once_per_day'] as int?) == 1,
         );
         await db.update(
           'habits',
@@ -491,6 +493,8 @@ class SyncService {
           row['name'] as String,
           row['points'] as int,
           row['decrease_points'] as int,
+          allowNegative: (row['allow_negative'] as int?) == 1,
+          oncePerDay: (row['once_per_day'] as int?) == 1,
         );
         await db.update(
           'habits',
