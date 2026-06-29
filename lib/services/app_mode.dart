@@ -54,10 +54,16 @@ class AppMode {
     }
   }
 
-  /// Resolves the *effective* memorization habit purely from the stored
-  /// override. Unlike attendance, there is no default-name match — this is
-  /// optional and returns null if the user hasn't picked one.
+  /// Resolves the *effective* memorization habit:
+  ///   1. The habit named "قرآن", "القرآن", or "حفظ القرآن" if one exists.
+  ///   2. Otherwise, the override stored in prefs (if it still exists).
+  ///   3. Otherwise, null — caller must force the user to pick.
   static Future<Habit?> resolveMemorizationHabit(List<Habit> habits) async {
+    final byName = habits.where((h) {
+      final name = h.name.trim();
+      return name == 'قرآن' || name == 'القرآن' || name == 'حفظ القرآن';
+    });
+    if (byName.isNotEmpty) return byName.first;
     final overrideId = await getMemorizationHabitOverride();
     if (overrideId == null) return null;
     final byId = habits.where((h) => h.id == overrideId);
