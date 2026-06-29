@@ -26,12 +26,12 @@ class AppMode {
   }
 
   /// Resolves the *effective* attendance habit:
-  ///   1. The habit named "حضور" if one exists.
+  ///   1. The habit named "حضور" or "الحضور" if one exists.
   ///   2. Otherwise, the override stored in prefs (if it still exists).
   ///   3. Otherwise, null — caller must force the user to pick.
   static Future<Habit?> resolveAttendanceHabit(List<Habit> habits) async {
     final byName = habits.where(
-      (h) => h.name.trim() == defaultAttendanceHabitName,
+      (h) => h.name.trim() == defaultAttendanceHabitName || h.name.trim() == 'الحضور',
     );
     if (byName.isNotEmpty) return byName.first;
     final overrideId = await getAttendanceHabitOverride();
