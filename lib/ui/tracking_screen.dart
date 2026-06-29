@@ -30,7 +30,7 @@ class TrackingScreen extends StatelessWidget {
 				child: Scaffold(
 					appBar: AppBar(
             title: const _LessonAppBarTitle(),
-            actions: const [SyncIndicator()],
+            actions: const [_DatePickerButton(), SyncIndicator()],
           ),
 					drawer: const AppDrawer(),
 					body: SafeArea(top: false, left: false, right: false, bottom: true, child: const _TrackingTable()),
@@ -80,6 +80,7 @@ class _LessonAppBarTitle extends StatelessWidget {
 	}
 
 	Future<void> _editSubject(BuildContext context, String current) async {
+
 		final cubit = context.read<TrackingCubit>();
 		final result = await showDialog<String>(
 			context: context,
@@ -87,6 +88,33 @@ class _LessonAppBarTitle extends StatelessWidget {
 		);
 		if (result == null) return;
 		await cubit.setLessonSubject(result);
+	}
+}
+
+class _DatePickerButton extends StatelessWidget {
+	const _DatePickerButton();
+
+	@override
+	Widget build(BuildContext context) {
+		return BlocBuilder<TrackingCubit, TrackingState>(
+			buildWhen: (a, b) => a.date != b.date,
+			builder: (context, state) {
+				return IconButton(
+					tooltip: 'اختر تاريخاً',
+					icon: const Icon(Icons.calendar_today),
+					onPressed: () async {
+						final cubit = context.read<TrackingCubit>();
+						final picked = await showDatePicker(
+							context: context,
+							initialDate: state.date,
+							firstDate: DateTime(2020),
+							lastDate: DateTime.now().add(const Duration(days: 1)),
+						);
+						if (picked != null) cubit.load(picked);
+					},
+				);
+			},
+		);
 	}
 }
 
