@@ -48,7 +48,7 @@ class AppDatabase {
 		final dbPath = p.join(dbDir, 'student_points.db');
 		return openDatabase(
 			dbPath,
-			version: 18,
+			version: 19,
 			onCreate: (db, version) async {
 				await db.execute('''
 					CREATE TABLE students (
@@ -65,7 +65,8 @@ class AppDatabase {
 						sync_status TEXT NOT NULL DEFAULT 'synced',
 						remote_id INTEGER,
 						last_modified TEXT,
-						server_updated_at TEXT
+						server_updated_at TEXT,
+						archived INTEGER NOT NULL DEFAULT 0
 					);
 				''');
 				await db.execute('''
@@ -78,7 +79,8 @@ class AppDatabase {
 						once_per_day INTEGER NOT NULL DEFAULT 0,
 						sort_order INTEGER NOT NULL DEFAULT 0,
 						remote_id INTEGER,
-						sync_status TEXT NOT NULL DEFAULT 'pending_create'
+						sync_status TEXT NOT NULL DEFAULT 'pending_create',
+						archived INTEGER NOT NULL DEFAULT 0
 					);
 				''');
 				await db.execute('''
@@ -414,6 +416,18 @@ class AppDatabase {
 				''');
 				await db.execute('CREATE INDEX IF NOT EXISTS idx_hadith_hifz_student ON hadith_hifz(student_id)');
 			}
+			// v19: local-only "archived" flag on students/habits. Deleting an entity
+			// that has point history archives it (hidden from active screens, kept
+			// for logs/sync) instead of removing it and orphaning its daily_entries.
+			if (oldVersion < 19) {
+				for (final table in ['students', 'habits']) {
+					final cols = await db.rawQuery('PRAGMA table_info($table)');
+					final names = cols.map((e) => e['name'] as String).toSet();
+					if (!names.contains('archived')) {
+						await db.execute('ALTER TABLE $table ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+					}
+				}
+			}
 			// Ensure new student columns exist on upgrade
 			final colsStudentsU = await db.rawQuery('PRAGMA table_info(students)');
 			final sNamesU = colsStudentsU.map((e) => e['name'] as String).toSet();
@@ -449,10 +463,16 @@ class AppDatabase {
 					await db.execute("ALTER TABLE habits ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending_create'");
 					await db.execute("UPDATE habits SET sync_status = 'pending_create' WHERE sync_status IS NULL");
 				}
+				if (!names.contains('archived')) {
+					await db.execute('ALTER TABLE habits ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+				}
 				final colsStudents = await db.rawQuery('PRAGMA table_info(students)');
 				final sNames = colsStudents.map((e) => e['name'] as String).toSet();
 				if (!sNames.contains('sort_order')) {
 					await db.execute('ALTER TABLE students ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+				}
+				if (!sNames.contains('archived')) {
+					await db.execute('ALTER TABLE students ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 				}
 				// Ensure new student info columns also exist
 				if (!sNames.contains('date_of_birth')) {

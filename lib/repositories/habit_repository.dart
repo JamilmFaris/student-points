@@ -9,9 +9,21 @@ class HabitRepository {
 	static final StreamController<void> _externalChanges =
 		StreamController<void>.broadcast();
 	static Stream<void> get externalChanges => _externalChanges.stream;
+	/// Active habits for the tracking/habits screens: excludes server-delete
+	/// tombstones and archived (hidden) habits.
 	Future<List<Habit>> getAll() async {
 		final db = await AppDatabase().database;
-		final rows = await db.query('habits', where: 'sync_status != ?', whereArgs: ['pending_delete'], orderBy: 'sort_order, name COLLATE NOCASE');
+		final rows = await db.query('habits',
+			where: "sync_status != 'pending_delete' AND (archived IS NULL OR archived = 0)",
+			orderBy: 'sort_order, name COLLATE NOCASE');
+		return rows.map((e) => Habit.fromMap(e)).toList();
+	}
+
+	/// Every habit including archived ones — used by the logs to resolve names
+	/// of habits that were deleted (archived) but still have historical points.
+	Future<List<Habit>> getAllIncludingArchived() async {
+		final db = await AppDatabase().database;
+		final rows = await db.query('habits', orderBy: 'sort_order, name COLLATE NOCASE');
 		return rows.map((e) => Habit.fromMap(e)).toList();
 	}
 
@@ -55,9 +67,23 @@ class HabitRepository {
 
 	Future<int> delete(int id) async {
 		final db = await AppDatabase().database;
+		// Does this habit still have point entries? If so, archive it instead of
+		// deleting: the row (and its remote_id) is kept so historical points keep
+		// resolving and syncing, and the logs can still show its name. It's just
+		// hidden from the active tracking/habits screens.
+		final entryRows = await db.query('daily_entries',
+			columns: ['id'], where: 'habit_id = ?', whereArgs: [id], limit: 1);
+		late int result;
+		if (entryRows.isNotEmpty) {
+			result = await db.update('habits',
+				{'archived': 1},
+				where: 'id = ?', whereArgs: [id]);
+			_externalChanges.add(null);
+			return result;
+		}
+		// No history — safe to remove outright.
 		final rows = await db.query('habits',
 			columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
-		late int result;
 		if (rows.isEmpty || rows.first['remote_id'] == null) {
 			// Never made it to the server — hard delete locally.
 			result = await db.delete('habits', where: 'id = ?', whereArgs: [id]);

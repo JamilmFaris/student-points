@@ -15,6 +15,33 @@ import '../services/export_service.dart';
 import 'widgets/app_drawer.dart';
 import 'widgets/sync_indicator.dart' show SyncIndicator;
 
+/// Builds the row/column entity lists for a single day's breakdown: all active
+/// students/habits plus any archived (deleted) ones that actually have an entry
+/// that day — so historical deletions show up without cluttering every day.
+Future<({List<Student> students, List<Habit> habits})> _dayEntities(
+	Map<int, Map<int, int>> points,
+) async {
+	final activeStudents = await StudentRepository().getAll();
+	final activeHabits = await HabitRepository().getAll();
+	final allStudents = await StudentRepository().getAllIncludingArchived();
+	final allHabits = await HabitRepository().getAllIncludingArchived();
+
+	final dayStudentIds = points.keys.toSet();
+	final dayHabitIds = <int>{for (final m in points.values) ...m.keys};
+	final activeStudentIds = activeStudents.map((s) => s.id).toSet();
+	final activeHabitIds = activeHabits.map((h) => h.id).toSet();
+
+	final students = <Student>[
+		...activeStudents,
+		...allStudents.where((s) => !activeStudentIds.contains(s.id) && dayStudentIds.contains(s.id)),
+	];
+	final habits = <Habit>[
+		...activeHabits,
+		...allHabits.where((h) => !activeHabitIds.contains(h.id) && dayHabitIds.contains(h.id)),
+	];
+	return (students: students, habits: habits);
+}
+
 class LogsScreen extends StatelessWidget {
 	const LogsScreen({super.key});
 
@@ -25,7 +52,8 @@ class LogsScreen extends StatelessWidget {
 			child: MultiBlocProvider(
 				providers: [
 					BlocProvider(create: (_) => LogsCubit(TrackingRepository())),
-					BlocProvider(create: (_) => StudentsCubit(StudentRepository())),
+					// Include archived students so deleted-but-historical names resolve.
+					BlocProvider(create: (_) => StudentsCubit(StudentRepository(), includeArchived: true)),
 				],
 				child: DefaultTabController(
 					length: 3,
@@ -57,13 +85,12 @@ class _DailyTab extends StatelessWidget {
 
 	Future<void> _exportDay(BuildContext context, DateTime date) async {
 		try {
-			final students = await StudentRepository().getAll();
-			final habits = await HabitRepository().getAll();
 			final points = await TrackingRepository().getDayPointsBreakdown(date);
+			final entities = await _dayEntities(points);
 			final dateStr = date.toIso8601String().substring(0, 10);
 			await ExportService.exportDayBreakdownPdf(
-				students: students,
-				habits: habits,
+				students: entities.students,
+				habits: entities.habits,
 				points: points,
 				dateLabel: dateStr,
 				suggestedFileName: 'نقاط_$dateStr.pdf',
@@ -233,7 +260,7 @@ class _MonthlyTabState extends State<_MonthlyTab> {
 											tooltip: 'تصدير',
 											onPressed: () async {
 												try {
-													final students = await StudentRepository().getAll();
+													final students = await StudentRepository().getAllIncludingArchived();
 													await ExportService.exportTotalsPdf(
 														totals: state.monthlyTotals,
 														students: students,
@@ -312,7 +339,7 @@ class _RangeTabState extends State<_RangeTab> {
 								label: const Text('تصدير PDF'),
 								onPressed: () async {
 									try {
-										final students = await StudentRepository().getAll();
+										final students = await StudentRepository().getAllIncludingArchived();
 										final s = start!.toIso8601String().substring(0, 10);
 										final e = end!.toIso8601String().substring(0, 10);
 										await ExportService.exportTotalsPdf(
@@ -416,11 +443,14 @@ class _TotalsList extends StatelessWidget {
 				itemCount: entries.length,
 				itemBuilder: (_, i) {
 					final entry = entries[i];
-					final student = s.students.firstWhere(
-						(e) => e.id == entry.key,
-						orElse: () => s.students.isEmpty ? (throw Exception('No students')) : s.students.first,
-					);
-					final name = student.name;
+					// Resolve the student's name (archived students are included in this
+					// cubit). Fall back to a neutral placeholder rather than another
+					// student's name if the row can't be found.
+					Student? student;
+					for (final e in s.students) {
+						if (e.id == entry.key) { student = e; break; }
+					}
+					final name = student?.name ?? 'طالب محذوف';
 					final initial = name.isNotEmpty ? name.characters.first : '?';
 					return Card(
 						shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -450,8 +480,6 @@ class _DayBreakdownDialog extends StatefulWidget {
 }
 
 class _DayBreakdownDialogState extends State<_DayBreakdownDialog> {
-	final _studentsRepo = StudentRepository();
-	final _habitsRepo = HabitRepository();
 	final _trackingRepo = TrackingRepository();
 
 	bool _loading = true;
@@ -481,14 +509,15 @@ class _DayBreakdownDialogState extends State<_DayBreakdownDialog> {
 
 	Future<void> _load() async {
 		setState(() => _loading = true);
-		final students = await _studentsRepo.getAll();
-		final habits = await _habitsRepo.getAll();
 		final counts = await _trackingRepo.getDayBreakdown(widget.date);
 		final points = await _trackingRepo.getDayPointsBreakdown(widget.date);
+		// Include archived students/habits that have an entry on this day so a
+		// deleted student/habit still shows in the day's table.
+		final entities = await _dayEntities(points);
 		if (!mounted) return;
 		setState(() {
-			_students = students;
-			_habits = habits;
+			_students = entities.students;
+			_habits = entities.habits;
 			_counts = counts;
 			_points = points;
 			_loading = false;

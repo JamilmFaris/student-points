@@ -23,9 +23,13 @@ class StudentsState {
 
 class StudentsCubit extends Cubit<StudentsState> {
 	final StudentRepository _repo;
+	/// When true, archived (hidden) students are included — used by the logs so
+	/// that historical points of deleted students still resolve to their names.
+	final bool includeArchived;
 	StreamSubscription<void>? _externalSub;
 
-	StudentsCubit(this._repo) : super(StudentsState(students: [], loading: true)) {
+	StudentsCubit(this._repo, {this.includeArchived = false})
+		: super(StudentsState(students: [], loading: true)) {
 		load();
 		_externalSub = StudentRepository.externalChanges.listen((_) {
 			load();
@@ -40,7 +44,9 @@ class StudentsCubit extends Cubit<StudentsState> {
 
 	Future<void> load() async {
 		try {
-			final list = await _repo.getAll();
+			final list = includeArchived
+				? await _repo.getAllIncludingArchived()
+				: await _repo.getAll();
 			emit(state.copyWith(students: list, loading: false, error: null));
 		} catch (e) {
 			emit(state.copyWith(loading: false, error: e.toString()));

@@ -156,15 +156,16 @@ class SyncService {
     // Push order matters:
     //  - creates first (so updates/points can resolve remote_ids).
     //  - updates next.
-    //  - deletes next (after dependent rows have caught up).
     //  - lessons before points so attendance push has lesson.remote_id.
-    //  - points last; attendance push piggybacks per successful date.
+    //  - points before student/habit deletes: a deleted student or habit is
+    //    still on the server and still in the local DB (pending_delete) when
+    //    points are pushed, so their remote_id resolves correctly and historical
+    //    entries upload before the parent row is removed.
+    //  - student/habit deletes last, after dependent rows have been pushed.
     final createStudents = await _pushPendingStudents();
     final updateStudents = await _pushUpdatedStudents();
-    final deleteStudents = await _pushDeletedStudents();
     final createHabits = await _pushPendingHabits();
     final updateHabits = await _pushUpdatedHabits();
-    final deleteHabits = await _pushDeletedHabits();
     final createHifz = await _pushPendingHifz();
     final updateHifz = await _pushUpdatedHifz();
     final deleteHifz = await _pushDeletedHifz();
@@ -180,6 +181,8 @@ class SyncService {
       habitMap,
       attendanceHabitLocalId: attendanceHabitId,
     );
+    final deleteHabits = await _pushDeletedHabits();
+    final deleteStudents = await _pushDeletedStudents();
 
     final db = await _db.database;
     final students = fullPull
@@ -286,12 +289,16 @@ class SyncService {
       try {
         final dto = _localStudentToDto(row);
         final created = await studentsApi.create(dto);
+        // A student deleted before ever being synced still needs to exist on the
+        // server long enough to receive historical points. Create it here but
+        // keep the pending_delete flag so it's removed after points push.
+        final wasPendingDelete = row['sync_status'] == 'pending_delete';
         await db.update(
           'students',
           {
             'remote_id': created.id,
             'server_updated_at': created.updatedAt,
-            'sync_status': 'synced',
+            'sync_status': wasPendingDelete ? 'pending_delete' : 'synced',
             'father_name': created.fatherName,
             'mother_name': created.motherName,
             'date_of_birth': created.dateOfBirth,
@@ -425,15 +432,28 @@ class SyncService {
     int pushed = 0;
     int failed = 0;
     for (final row in rows) {
+      final localId = row['id'] as int;
+      // Keep the student row while it still has un-pushed point entries — they
+      // need its remote_id to resolve on the next sync. Removing it now would
+      // orphan them (the bug that caused "record not uploaded" warnings).
+      final pendingEntries = await db.query(
+        'daily_entries',
+        columns: ['id'],
+        where: "student_id = ? AND sync_status IN ('pending_create', 'pending_update')",
+        whereArgs: [localId],
+        limit: 1,
+      );
+      if (pendingEntries.isNotEmpty) continue;
+
       final remoteId = row['remote_id'] as int?;
       if (remoteId == null) {
         // Inconsistent state — tombstoned but never on the server. Hard-remove.
-        await db.delete('students', where: 'id = ?', whereArgs: [row['id']]);
+        await db.delete('students', where: 'id = ?', whereArgs: [localId]);
         continue;
       }
       try {
         await studentsApi.delete(remoteId);
-        await db.delete('students', where: 'id = ?', whereArgs: [row['id']]);
+        await db.delete('students', where: 'id = ?', whereArgs: [localId]);
         pushed++;
       } on ApiException {
         failed++;
@@ -460,11 +480,15 @@ class SyncService {
           allowNegative: (row['allow_negative'] as int?) == 1,
           oncePerDay: (row['once_per_day'] as int?) == 1,
         );
+        // A habit deleted before it was ever synced still needs to exist on the
+        // server long enough to receive its historical points. Create it here
+        // but keep the pending_delete flag so it's removed after points push.
+        final wasPendingDelete = row['sync_status'] == 'pending_delete';
         await db.update(
           'habits',
           {
             'remote_id': created.id,
-            'sync_status': 'synced',
+            'sync_status': wasPendingDelete ? 'pending_delete' : 'synced',
           },
           where: 'id = ?',
           whereArgs: [row['id']],
@@ -521,14 +545,27 @@ class SyncService {
     int pushed = 0;
     int failed = 0;
     for (final row in rows) {
+      final localId = row['id'] as int;
+      // Keep the habit row while it still has un-pushed point entries — they
+      // need its remote_id to resolve on the next sync. Removing it now would
+      // orphan them (the bug that caused "record not uploaded" warnings).
+      final pendingEntries = await db.query(
+        'daily_entries',
+        columns: ['id'],
+        where: "habit_id = ? AND sync_status IN ('pending_create', 'pending_update')",
+        whereArgs: [localId],
+        limit: 1,
+      );
+      if (pendingEntries.isNotEmpty) continue;
+
       final remoteId = row['remote_id'] as int?;
       if (remoteId == null) {
-        await db.delete('habits', where: 'id = ?', whereArgs: [row['id']]);
+        await db.delete('habits', where: 'id = ?', whereArgs: [localId]);
         continue;
       }
       try {
         await habitsApi.delete(remoteId);
-        await db.delete('habits', where: 'id = ?', whereArgs: [row['id']]);
+        await db.delete('habits', where: 'id = ?', whereArgs: [localId]);
         pushed++;
       } on ApiException {
         failed++;
@@ -918,11 +955,26 @@ class SyncService {
     final remoteStudentByLocal = <int, int>{
       for (final r in studentRows) r['id'] as int: r['remote_id'] as int,
     };
-    final habitRows = await db.query('habits', columns: ['id', 'name']);
+    // All local student ids (incl. unsynced) to tell a genuine orphan — whose
+    // student row was deleted before its points were pushed — apart from a
+    // student that merely hasn't been pushed to the server yet.
+    final allStudentRows = await db.query('students', columns: ['id']);
+    final localStudentIds = <int>{for (final r in allStudentRows) r['id'] as int};
+    final habitRows = await db.query('habits', columns: ['id', 'name', 'remote_id']);
     final remoteHabitByLocal = <int, int>{};
+    final localHabitIds = <int>{};
     for (final r in habitRows) {
-      final remoteId = habitNameMap[(r['name'] as String).trim()];
-      if (remoteId != null) remoteHabitByLocal[r['id'] as int] = remoteId;
+      final localId = r['id'] as int;
+      localHabitIds.add(localId);
+      final storedRemoteId = r['remote_id'] as int?;
+      if (storedRemoteId != null) {
+        // Prefer the remote_id already stored — avoids name-mismatch failures.
+        remoteHabitByLocal[localId] = storedRemoteId;
+      } else {
+        // Not yet synced to server: fall back to name-based lookup.
+        final serverRemoteId = habitNameMap[(r['name'] as String).trim()];
+        if (serverRemoteId != null) remoteHabitByLocal[localId] = serverRemoteId;
+      }
     }
 
     int rowsPushed = 0;
@@ -942,9 +994,29 @@ class SyncService {
     }
 
     for (final row in pending) {
-      final remoteStudent = remoteStudentByLocal[row['student_id'] as int];
-      final remoteHabit = remoteHabitByLocal[row['habit_id'] as int];
-      if (remoteStudent == null || remoteHabit == null) {
+      final habitLocalId = row['habit_id'] as int;
+      final studentLocalId = row['student_id'] as int;
+      final remoteStudent = remoteStudentByLocal[studentLocalId];
+      final remoteHabit = remoteHabitByLocal[habitLocalId];
+      if (remoteStudent == null) {
+        // The student row no longer exists locally: this entry was orphaned by a
+        // student deleted before its points were pushed (pre-dates the fix that
+        // keeps such students alive). Nothing to attach it to — skip quietly
+        // rather than reporting a sync mismatch.
+        if (!localStudentIds.contains(studentLocalId)) continue;
+        // Student exists locally but isn't on the server yet (e.g. its create
+        // failed) — a real, retryable mismatch worth surfacing.
+        rowsSkipped++;
+        continue;
+      }
+      if (remoteHabit == null) {
+        // The habit row no longer exists locally: this entry was orphaned by a
+        // habit deleted before its points were pushed (pre-dates the fix that
+        // keeps such habits alive). There is nothing to attach it to, so skip
+        // it quietly rather than reporting a (nonexistent) name mismatch.
+        if (!localHabitIds.contains(habitLocalId)) continue;
+        // Habit exists locally but couldn't be mapped to the server — a real
+        // name/sync mismatch worth surfacing.
         rowsSkipped++;
         continue;
       }

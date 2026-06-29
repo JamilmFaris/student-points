@@ -10,12 +10,24 @@ class StudentRepository {
 	static final StreamController<void> _externalChanges =
 		StreamController<void>.broadcast();
 	static Stream<void> get externalChanges => _externalChanges.stream;
+	/// Active students for the tracking/students screens: hides rows tombstoned
+	/// for server-side deletion and archived (hidden) students.
 	Future<List<Student>> getAll() async {
 		final db = await AppDatabase().database;
-		// Hide rows tombstoned for server-side deletion until SyncService drains them.
 		final rows = await db.query(
 			'students',
-			where: "sync_status IS NULL OR sync_status != 'pending_delete'",
+			where: "(sync_status IS NULL OR sync_status != 'pending_delete') AND (archived IS NULL OR archived = 0)",
+			orderBy: 'sort_order ASC, name COLLATE NOCASE',
+		);
+		return rows.map((e) => Student.fromMap(e)).toList();
+	}
+
+	/// Every student including archived ones — used by the logs to resolve names
+	/// of students that were deleted (archived) but still have historical points.
+	Future<List<Student>> getAllIncludingArchived() async {
+		final db = await AppDatabase().database;
+		final rows = await db.query(
+			'students',
 			orderBy: 'sort_order ASC, name COLLATE NOCASE',
 		);
 		return rows.map((e) => Student.fromMap(e)).toList();
@@ -70,9 +82,23 @@ class StudentRepository {
 
 	Future<int> delete(int id) async {
 		final db = await AppDatabase().database;
+		// Does this student still have point entries? If so, archive instead of
+		// deleting: the row (and its remote_id) is kept so historical points keep
+		// resolving and syncing, and the logs can still show the name. It's just
+		// hidden from the active tracking/students screens.
+		final entryRows = await db.query('daily_entries',
+			columns: ['id'], where: 'student_id = ?', whereArgs: [id], limit: 1);
+		late int result;
+		if (entryRows.isNotEmpty) {
+			result = await db.update('students',
+				{'archived': 1},
+				where: 'id = ?', whereArgs: [id]);
+			_externalChanges.add(null);
+			return result;
+		}
+		// No history — safe to remove outright.
 		final rows = await db.query('students',
 			columns: ['remote_id'], where: 'id = ?', whereArgs: [id], limit: 1);
-		late int result;
 		if (rows.isEmpty || rows.first['remote_id'] == null) {
 			// Never made it to the server — hard delete locally.
 			result = await db.delete('students', where: 'id = ?', whereArgs: [id]);
