@@ -19,6 +19,7 @@ import 'repositories/student_repository.dart';
 import 'services/connectivity_watcher.dart';
 import 'services/sync_service.dart';
 import 'services/token_storage.dart';
+import 'ui/attendance_screen.dart';
 import 'ui/habits_screen.dart';
 import 'ui/home_screen.dart';
 import 'ui/login_screen.dart';
@@ -111,6 +112,7 @@ class MyApp extends StatelessWidget {
           '/habits': (_) => const HabitsScreen(),
           '/tracking': (_) => const TrackingScreen(),
           '/logs': (_) => const LogsScreen(),
+          '/attendance': (_) => const AttendanceScreen(),
           '/quran': (_) => const MemorizationScreen(),
           '/profile': (_) => ProfileScreen(apiClient: apiClient),
           '/settings': (_) => const SettingsScreen(),

@@ -260,6 +260,24 @@ class TrackingRepository {
 		return rows.map((e) => e['date'] as String).toList();
 	}
 
+	/// For the given attendance [habitId], returns a map of date (yyyy-MM-dd) →
+	/// set of student ids that attended that day (positive points on the habit).
+	Future<Map<String, Set<int>>> getAttendanceByDate(int habitId) async {
+		final db = await AppDatabase().database;
+		final rows = await db.query(
+			'daily_entries',
+			columns: ['student_id', 'date'],
+			where: 'habit_id = ? AND points_earned > 0',
+			whereArgs: [habitId],
+		);
+		final byDate = <String, Set<int>>{};
+		for (final r in rows) {
+			final date = r['date'] as String;
+			byDate.putIfAbsent(date, () => <int>{}).add(r['student_id'] as int);
+		}
+		return byDate;
+	}
+
 	Future<Map<int, Map<int, int>>> getDayBreakdown(DateTime date) async {
 		final db = await AppDatabase().database;
 		final d = date.toIso8601String().substring(0, 10);
