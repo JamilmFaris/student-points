@@ -1137,6 +1137,11 @@ Future<void> _addMultipleMemorizedSections(BuildContext context, Student student
                                                         selected: label == 'تثبيت',
                                                         onSelected: (_) => setState(() => label = 'تثبيت'),
                                                     ),
+                                                    ChoiceChip(
+                                                        label: const Text('حفظ سابق'),
+                                                        selected: label == 'حفظ سابق',
+                                                        onSelected: (_) => setState(() => label = 'حفظ سابق'),
+                                                    ),
                                                 ],
                                             ),
                                         ),
