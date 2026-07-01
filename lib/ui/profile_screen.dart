@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../api/api_client.dart';
+import '../api/services/_dio_error.dart';
 import '../api/services/auth_api.dart';
+import '../api/services/user_hifz_api.dart';
 import '../bloc/auth_cubit.dart';
 import 'widgets/app_drawer.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, required this.apiClient});
+
+  /// Shared app-wide client — reused (not re-created) so token refreshes don't
+  /// invalidate the main client's session.
+  final ApiClient apiClient;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -28,9 +35,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _saving = false;
   bool _changingPassword = false;
 
+  late final UserHifzApi _hifzApi;
+  List<List<int>> _hifzRanges = const [];
+  bool _loadingHifz = true;
+  String? _hifzError;
+
   @override
   void initState() {
     super.initState();
+    _hifzApi = UserHifzApi(widget.apiClient);
+    _loadHifz();
     final user = context.read<AuthCubit>().state.user;
     _firstName = TextEditingController(text: user?.firstName ?? '');
     _lastName = TextEditingController(text: user?.lastName ?? '');
@@ -76,6 +90,127 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _trimmed(TextEditingController c) {
     final v = c.text.trim();
     return v.isEmpty ? null : v;
+  }
+
+  Future<void> _loadHifz() async {
+    setState(() {
+      _loadingHifz = true;
+      _hifzError = null;
+    });
+    try {
+      final ranges = await _hifzApi.getRanges();
+      if (!mounted) return;
+      setState(() {
+        _hifzRanges = ranges;
+        _loadingHifz = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hifzError = e.message;
+        _loadingHifz = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hifzError = e.toString();
+        _loadingHifz = false;
+      });
+    }
+  }
+
+  Future<void> _addHifz() async {
+    final input = await showDialog<_UserHifzInput>(
+      context: context,
+      builder: (_) => const _AddUserHifzDialog(),
+    );
+    if (input == null) return;
+    try {
+      await _hifzApi.create(
+        fromJuz: input.fromJuz,
+        toJuz: input.toJuz,
+        date: input.date,
+        label: input.label,
+        notes: input.notes,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تمت إضافة الحفظ')),
+        );
+      }
+      await _loadHifz();
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل الإضافة: ${e.message}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل الإضافة: $e')),
+        );
+      }
+    }
+  }
+
+  String _rangeLabel(List<int> pair) {
+    if (pair.isEmpty) return '';
+    final from = pair.first;
+    final to = pair.length > 1 ? pair.last : pair.first;
+    return from == to ? 'الجزء $from' : 'الجزء $from - $to';
+  }
+
+  Widget _buildHifzSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'حفظي من القرآن',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'تحديث',
+              onPressed: _loadingHifz ? null : _loadHifz,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_loadingHifz)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (_hifzError != null)
+          Text(_hifzError!, style: const TextStyle(color: Colors.redAccent))
+        else if (_hifzRanges.isEmpty)
+          const Text('لا يوجد حفظ مسجّل', style: TextStyle(color: Colors.black54))
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final pair in _hifzRanges)
+                Chip(label: Text(_rangeLabel(pair))),
+            ],
+          ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _addHifz,
+          icon: const Icon(Icons.add),
+          label: const Text('إضافة حفظ'),
+        ),
+      ],
+    );
   }
 
   Future<void> _save() async {
@@ -346,6 +481,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           icon: const Icon(Icons.lock),
                           label: const Text('تغيير كلمة المرور'),
                         ),
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        _buildHifzSection(),
                       ],
                     ),
                   ),
@@ -370,6 +509,179 @@ class _ReadOnlyTile extends StatelessWidget {
         dense: true,
         title: Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
         subtitle: Text(value, style: const TextStyle(fontSize: 15, color: Colors.black87)),
+      ),
+    );
+  }
+}
+
+/// Result returned by [_AddUserHifzDialog] on confirm.
+class _UserHifzInput {
+  const _UserHifzInput({
+    required this.fromJuz,
+    required this.toJuz,
+    required this.date,
+    required this.label,
+    this.notes,
+  });
+  final int fromJuz;
+  final int toJuz;
+  final String date; // ISO datetime, e.g. 2026-07-01T12:00:00Z
+  final String label;
+  final String? notes;
+}
+
+class _AddUserHifzDialog extends StatefulWidget {
+  const _AddUserHifzDialog();
+
+  @override
+  State<_AddUserHifzDialog> createState() => _AddUserHifzDialogState();
+}
+
+class _AddUserHifzDialogState extends State<_AddUserHifzDialog> {
+  static const _labels = ['حفظ', 'مراجعة', 'تثبيت', 'حفظ سابق'];
+
+  int _fromJuz = 1;
+  int _toJuz = 1;
+  String _label = 'حفظ';
+  DateTime _date = DateTime.now();
+  final _notes = TextEditingController();
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
+
+  String _dateStr() =>
+      '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _date = picked);
+  }
+
+  void _submit() {
+    if (_fromJuz > _toJuz) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الجزء الأول يجب أن يكون قبل الأخير')),
+      );
+      return;
+    }
+    Navigator.pop(
+      context,
+      _UserHifzInput(
+        fromJuz: _fromJuz,
+        toJuz: _toJuz,
+        date: '${_dateStr()}T12:00:00Z',
+        label: _label,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: const Text('إضافة حفظ'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                onTap: _pickDate,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'التاريخ',
+                    border: OutlineInputBorder(),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_dateStr(), textDirection: TextDirection.ltr),
+                      const Icon(Icons.calendar_today),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _fromJuz,
+                      decoration: const InputDecoration(
+                        labelText: 'من الجزء',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (int j = 1; j <= 30; j++)
+                          DropdownMenuItem(value: j, child: Text('$j')),
+                      ],
+                      onChanged: (v) => setState(() => _fromJuz = v ?? _fromJuz),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _toJuz,
+                      decoration: const InputDecoration(
+                        labelText: 'إلى الجزء',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (int j = 1; j <= 30; j++)
+                          DropdownMenuItem(value: j, child: Text('$j')),
+                      ],
+                      onChanged: (v) => setState(() => _toJuz = v ?? _toJuz),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'النوع',
+                  border: OutlineInputBorder(),
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final l in _labels)
+                      ChoiceChip(
+                        label: Text(l),
+                        selected: _label == l,
+                        onSelected: (_) => setState(() => _label = l),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _notes,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'ملاحظات (اختياري)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(onPressed: _submit, child: const Text('إضافة')),
+        ],
       ),
     );
   }

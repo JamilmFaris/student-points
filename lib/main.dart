@@ -60,14 +60,20 @@ void main() {
 
   ConnectivityWatcher(authCubit: authCubit, syncCubit: syncCubit).start();
 
-  runApp(MyApp(authCubit: authCubit, syncCubit: syncCubit));
+  runApp(MyApp(authCubit: authCubit, syncCubit: syncCubit, apiClient: apiClient));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, required this.authCubit, required this.syncCubit});
+  const MyApp({
+    super.key,
+    required this.authCubit,
+    required this.syncCubit,
+    required this.apiClient,
+  });
 
   final AuthCubit authCubit;
   final SyncCubit syncCubit;
+  final ApiClient apiClient;
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +112,7 @@ class MyApp extends StatelessWidget {
           '/tracking': (_) => const TrackingScreen(),
           '/logs': (_) => const LogsScreen(),
           '/quran': (_) => const MemorizationScreen(),
-          '/profile': (_) => const ProfileScreen(),
+          '/profile': (_) => ProfileScreen(apiClient: apiClient),
           '/settings': (_) => const SettingsScreen(),
         },
       ),
